@@ -1,9 +1,25 @@
-'''
-quick DE integration benchmark with noise and delays
+#
 
-marmaduke 
-mmwoodman@gmail.com
-'''
+"""
+quick DE integration benchmark with noise and delays
+using CUDA
+
+parts to work on:
+
+- node update kernel
+- coupling kernel
+- noise kernel
+
+questions:
+
+? Do we really have to update the coupling with same time step
+    as the state? 
+? We can take advantage of the delays using a more complex scheme
+    which can do short and long delays separately
+
+.. moduleauthor Marmaduke Woodman <duke@eml.cc>
+"""
+
 import numpy as np
 import time
 import logging as lg
@@ -45,11 +61,10 @@ def integrate(nsteps, ssize,
     log.info('starting integration')
     tic = time.time()
     for i in xrange(1, nsteps):
-        #log.debug('%s %s' % ((i-1-idelays)%horizon, node_ids))
+
         delstate = ys[(i-1-idelays)%horizon, node_ids]
-        #log.debug('%s' % delstate)
         input = k*np.sum(delstate*gij, axis=0)/ssize
-        #log.debug('%s' % input)
+
         ys[i%horizon,:] = ys[(i-1)%horizon,:] +\
                              dt*(fhn(ys[(i-1)%horizon,:], input, **pars) +
                                  randn(size=ssize*2, scale=sigma))
@@ -57,6 +72,25 @@ def integrate(nsteps, ssize,
     log.info('integration took %s seconds' % (toc-tic,))
     return ys
 
+update_src = """
+__global__ void update(int step, float *ts, float *ys, float *gij) {
+
+    unsigned int i = threadIdx.x + $stride * threadIdx.y, j;
+    float delstate, input = 0.;
+
+    for (j=0;j<$N;j++) {
+        delstate = ys[ nodeid[j]*$stride + (1-idelay[j])%horizon];
+        input += k*gij[i + $N*j]*delstate;
+    }
+
+    float x = ys[step*$stride + 2*j], y = ys[step*$stride + 2*j + 1];
+    ys[((step+1)*$stride)%horizon + 2*j+0] = x + $dt*(x - pow(x, 3.0) + y)*$tau;
+    ys[((step+1)*$stride)%horizon + 2*j+1] = y - $dt*(x - a + b*y - input)/$tau;
+
+}
+"""
+
+# template with [dt, horizon, 
 
 sim_sizes = {'small'  : 2**2,  # 4 nodes
              'medium' : 2**6,  # 64 nodes
