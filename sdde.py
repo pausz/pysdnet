@@ -52,3 +52,8 @@ def sdde(N, tf=50, dt=0.2, k=5):
         ys[i,:] = hist[i%horizon,:]
     return ys
 
+# setup data in memory
+# transfer to gpu
+# execute loop
+# copy back 
+
