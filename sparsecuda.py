@@ -1,5 +1,11 @@
+"""
+This isn't actually very important for the TVB 
+
+the delayed stochastic simulator is. 
+"""
 import time
 from numpy import *
+import pyublas
 import pycuda.autoinit
 import pycuda.driver as drv
 import pycuda.gpuarray as gary
@@ -19,7 +25,7 @@ class mySpMV(pSpMV):
                 x.gpudata,
                 y.gpudata)
 
-        self.remaining_coo_gpu(x, y)
+        #self.remaining_coo_gpu(x, y)
 
 def setup(fname):
 
