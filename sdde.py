@@ -99,6 +99,6 @@ class gpsdde:
         for v in ['a', 'd', 'h', 'hrzn', 'mod', 'func', 'ag', 'dg', 'hg']:
             exec("self.%s = %s" % (v, v))
 
-    def step(self, gridn=1):
-        self.func(self.ag, self.hg, self.dg, block=(32,2,1), grid=(8,gridn))
+    def step(self, grid=(8, 1)):
+        self.func(self.ag, self.hg, self.dg, block=(32,2,1), grid=grid)
 
