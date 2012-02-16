@@ -39,11 +39,26 @@ TODO: ctypes wrapper
 */
 
 #include <math.h>
+#include <stdio.h>
+
+
+int wrap(int i, int h) {
+
+    if (i >= 0)
+        return i % h;
+    else
+        if (i == -h)
+            return 0;
+        else
+            return h + (i % h);
+
+}
+
 
 static void node_step(int j, int i, int horizon, int *nids, int *idelays, double dt,
     double k, int N, double *x, double *G, double *hist, double *randn)
     /*
-    step individual node; this is most like what we will 
+    step individual node; this is most like what we will
     use as a kernel for cuda
 
     j - is this node's id
@@ -61,42 +76,23 @@ static void node_step(int j, int i, int horizon, int *nids, int *idelays, double
     */
 {
 
-    // >>> x = hist[(i - 1) % horizon, :]
-    double xj = hist[N*((i - 1) % horizon) + j];
+    double xj = hist[N*wrap(i - 1, horizon) + j];
 
-    /*
-    compute delayed state information, memory bandwidth hog
+    double input = 0.0, Iij;
 
-    >>> delstate = hist[(i - 1 - idelays) % horizon, nids]
-
-    all math functions occur here + loop for G*delstate sum
-    k is constant for simulation
-
-    >>> dx = (x - 5*x**3)/5 + k*np.sum(G*delstate, axis=0)/N
-
-    Here though, it behooves us to combine the delayed state access
-    and input computation. Then, we can compute dxj.
-
-    */
-
-    double input = 0.0;
-
-    for (int idx=0; idx<N; idx++)
-        input += G[j*N + idx]*hist[idelays[j*N + idx] + idx];
+    for (int idx=0; idx<N; idx++) {
+        Iij = G[j*N + idx]*hist[N*(wrap((i - 1 - idelays[j*N + idx]), horizon)) + idx];
+        input += Iij;
+    }
 
     double dxj = (xj - 5.0*pow(xj, 3.0))/5.0 + k*input/N;
 
-    // # aligned memory access again
-    // # random number generator used
-    // hist[i%horizon,:] = x + dt*(dx+randn(N)/5)
-
-    hist[i % horizon + j] = xj + dt*(dxj + randn[j]/5.0);
-
+    hist[N*wrap(i, horizon) + j] = xj + dt*(dxj + randn[j]/5.0);
 }
 
 
 
-static void sdde_step(int i, int horizon, int *nids, int *idelays, double dt,
+void sdde_step(int i, int horizon, int *nids, int *idelays, double dt,
     double k, int N, double *x, double *G, double *hist, double *randn)
     /*
     step all the nodes
@@ -104,8 +100,10 @@ static void sdde_step(int i, int horizon, int *nids, int *idelays, double dt,
 {
     int j;
 
-    for (j=0; j<N; j++)
+    for (j=0; j<N; j++) {
         node_step(j, i, horizon, nids, idelays, dt, k, N, x, G, hist, randn);
+    }
+
 }
 
 

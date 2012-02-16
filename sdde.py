@@ -12,11 +12,37 @@ First
 
 """
 
+import ctypes
+import os.path
+
 from pylab import *
 
 import numpy.random
+from numpy.ctypeslib import ndpointer
 
 reset_rng = lambda : numpy.random.seed(42)
+prep_array = lambda a: ascontiguousarray(a).ctypes.data
+
+ndpcontig = lambda:ndpointer(flags='CONTIGUOUS,ALIGNED')
+
+class c_step(object):
+    """
+    call into C to compute step
+
+    static void sdde_step(int i, int horizon, int *nids, int *idelays, double dt,
+        double k, int N, double *x, double *G, double *hist, double *randn)
+
+    """
+
+    cfunc = ctypes.CDLL('./sdde_step.so').sdde_step
+    cfunc.restype = ctypes.c_voidp
+    cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
+        ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
+        ndpcontig(), ndpcontig()]
+
+    def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
+        self.cfunc(i, horizon, nids, idelays, dt, k, N, x, G, hist, randn(N))
+
 
 class sdde2(object):
     """
@@ -52,93 +78,100 @@ class sdde2(object):
 
         # all math functions occur here + loop for G*delstate sum
         # k is constant for simulation
-        dx = (x - 5*x**3)/5 + k*np.sum(G*delstate, axis=0)/N
+        dx = (x - 5*x**3)/5 + k*np.sum(G*delstate, axis=1)/N
 
         # aligned memory access again
         # random number generator used
-        hist[i%horizon,:] = x + dt*(dx+randn(N)/5)
+        hist[i%horizon,:] = x + dt*(dx+ randn(N)/5)
 
-    def __call__(self, N, tf=50, dt=0.2, k=5, delayscale=1):
+    def __call__(self, N, tf=50, dt=0.2, k=5, delayscale=1, step_fn=None,
+                    debug_out=False):
 
         # initialize
         G = randn(N, N)
         x = randn(N)
         idelays = (delayscale*abs(randn(N, N))/dt).astype(int32)
         horizon = idelays.max()
-        hist = zeros((horizon + 1, N))
+        hist = zeros((horizon + 1, N)) + 0.2
         nids = tile(arange(N), (N, 1))
         xout = zeros((int(tf/dt), N))
 
+        if not step_fn:
+            step_fn = self.step
+
         # step
         for i in xrange(1, int(tf/dt)):
-            self.step(i, horizon, nids, idelays, dt, k, N, x, G, hist)
+            step_fn(i, horizon, nids, idelays, dt, k, N, x, G, hist)
             xout[i, :] = hist[i % horizon, :]
 
-        return xout
+        if debug_out:
+            return G, x, idelays, horizon, hist, nids, xout
+        else:
+            return xout
 
 if __name__ == '__main__':
 
     from pylab import *
     import time
 
-    for idx, k in enumerate(e**r_[-3:2:100j]):
+    # for idx, k in enumerate(e**r_[-3:2:100j]):
 
-        tic = time.time()
-        dt = 0.2
-        # k = 1.0
-        tf = 1000
-        ts = r_[0:tf:dt]
-        smoothn = 10
+    tic = time.time()
+    dt = 0.2
+    k = 1.0
+    tf = 1000
+    ts = r_[0:tf:dt]
+    smoothn = 10
 
-        smooth = lambda sig: convolve(sig, ones(smoothn), 'same')/smoothn
+    smooth = lambda sig: convolve(sig, ones(smoothn), 'same')/smoothn
 
-        run = sdde2()
+    run = sdde2()
 
-        figure(figsize=(10, 14))
+    figure(figsize=(10, 14))
 
-        # without significant delay
-        reset_rng()
-        ys = run(30, tf=tf, dt=dt, delayscale=0.1, k=k)
-        subplot(521)
-        [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
-        subplot(523)
-        ys0 = ys - ys.mean(axis=0)
-        cv = cov(ys0.T)
-        pcolor(cv)
-        colorbar()
-        subplot(525)
-        es, ev = eig(cv)
-        plot(es)
-        subplot(527)
-        pcas = dot(ev[:3, :], ys.T)
-        [plot(ts, pc, alpha=0.5) for pc in pcas]
-        subplot(529)
-        freq = fftfreq(pcas.shape[1], d=dt/1000)
-        [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-        xlim([0, freq.max()])
+    # without significant delay
+    reset_rng()
+    ys = run(30, tf=tf, dt=dt, delayscale=0.1, k=k)
+    subplot(521)
+    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    subplot(523)
+    ys0 = ys - ys.mean(axis=0)
+    cv = cov(ys0.T)
+    pcolor(cv)
+    colorbar()
+    subplot(525)
+    es, ev = eig(cv)
+    plot(es)
+    subplot(527)
+    pcas = dot(ev[:3, :], ys.T)
+    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    subplot(529)
+    freq = fftfreq(pcas.shape[1], d=dt/1000)
+    [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    xlim([0, freq.max()])
 
-        # with delay
-        reset_rng()
-        ys = run(30, tf=tf, dt=dt, delayscale=50, k=k)
-        subplot(522)
-        [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
-        subplot(524)
-        ys0 = ys - ys.mean(axis=0)
-        cv = cov(ys0.T)
-        pcolor(cv)
-        colorbar()
-        subplot(526)
-        es, ev = eig(cv)
-        plot(es)
-        subplot(528)
-        pcas = dot(ev[:3, :], ys.T)
-        [plot(ts, pc, alpha=0.5) for pc in pcas]
-        subplot(520)
-        freq = fftfreq(pcas.shape[1], d=dt/1000)
-        [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-        xlim([0, freq.max()])
+    # with delay
+    reset_rng()
+    ys = run(30, tf=tf, dt=dt, delayscale=50, k=k)
+    subplot(522)
+    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    subplot(524)
+    ys0 = ys - ys.mean(axis=0)
+    cv = cov(ys0.T)
+    pcolor(cv)
+    colorbar()
+    subplot(526)
+    es, ev = eig(cv)
+    plot(es)
+    subplot(528)
+    pcas = dot(ev[:3, :], ys.T)
+    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    subplot(520)
+    freq = fftfreq(pcas.shape[1], d=dt/1000)
+    [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    xlim([0, freq.max()])
 
-        suptitle('k=%s' % (k,))
-        savefig('compare%02d.png'%(idx,))
-        close()
-        print 'took ', time.time() - tic
+    suptitle('k=%s' % (k,))
+    #savefig('compare%02d.png'%(idx,))
+    #close()
+    print 'took ', time.time() - tic
