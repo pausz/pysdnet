@@ -84,7 +84,7 @@ class sdde2(object):
         # random number generator used
         hist[i%horizon,:] = x + dt*(dx+ randn(N)/5)
 
-    def __call__(self, N, tf=50, dt=0.2, k=5, delayscale=1, step_fn=None,
+    def __call__(self, N, tf=50, dt=0.2, k=0.01, delayscale=1, step_fn=None,
                     debug_out=False):
 
         # initialize
@@ -92,7 +92,7 @@ class sdde2(object):
         x = randn(N)
         idelays = (delayscale*abs(randn(N, N))/dt).astype(int32)
         horizon = idelays.max()
-        hist = zeros((horizon + 1, N)) + 0.2
+        hist = zeros((horizon + 1, N))
         nids = tile(arange(N), (N, 1))
         xout = zeros((int(tf/dt), N))
 
@@ -116,10 +116,9 @@ if __name__ == '__main__':
 
     # for idx, k in enumerate(e**r_[-3:2:100j]):
 
-    tic = time.time()
-    dt = 0.2
+    dt = 0.02
     k = 1.0
-    tf = 1000
+    tf = 10000
     ts = r_[0:tf:dt]
     smoothn = 10
 
@@ -127,51 +126,77 @@ if __name__ == '__main__':
 
     run = sdde2()
 
-    figure(figsize=(10, 14))
+    figure(figsize=(14, 14))
 
     # without significant delay
+    tic = time.time()
     reset_rng()
-    ys = run(30, tf=tf, dt=dt, delayscale=0.1, k=k)
-    subplot(521)
+    ys = run(500, tf=tf, dt=dt, delayscale=0.1, k=k)
+    print 'took ', time.time() - tic
+    subplot(531)
     [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
-    subplot(523)
+    subplot(534)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(525)
+    subplot(537)
     es, ev = eig(cv)
     plot(es)
-    subplot(527)
+    subplot(5,3,10)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts, pc, alpha=0.5) for pc in pcas]
-    subplot(529)
+    subplot(5,3,13)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
-    [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     xlim([0, freq.max()])
 
     # with delay
+    tic = time.time()
     reset_rng()
-    ys = run(30, tf=tf, dt=dt, delayscale=50, k=k)
-    subplot(522)
+    ys = run(500, tf=tf, dt=dt, delayscale=50, k=k)
+    print 'took ', time.time() - tic
+    subplot(532)
     [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
-    subplot(524)
+    subplot(535)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(526)
+    subplot(538)
     es, ev = eig(cv)
     plot(es)
-    subplot(528)
+    subplot(5,3,11)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts, pc, alpha=0.5) for pc in pcas]
-    subplot(520)
+    subplot(5,3,14)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
-    [loglog(freq, smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    xlim([0, freq.max()])
+
+    # with delay, C integrator
+    tic = time.time()
+    reset_rng()
+    ys = run(500, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
+    print 'took ', time.time() - tic
+    subplot(533)
+    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    subplot(536)
+    ys0 = ys - ys.mean(axis=0)
+    cv = cov(ys0.T)
+    pcolor(cv)
+    colorbar()
+    subplot(539)
+    es, ev = eig(cv)
+    plot(es)
+    subplot(5,3,12)
+    pcas = dot(ev[:3, :], ys.T)
+    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    subplot(5,3,15)
+    freq = fftfreq(pcas.shape[1], d=dt/1000)
+    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     xlim([0, freq.max()])
 
     suptitle('k=%s' % (k,))
     #savefig('compare%02d.png'%(idx,))
     #close()
-    print 'took ', time.time() - tic
