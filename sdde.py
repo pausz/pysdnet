@@ -79,7 +79,13 @@ class gpustep(object):
         kernel_src = Template(fd.read())
 
     # TODO rewrite for new kernel
-    def __init__(self, n, k=5.0, dt=0.1):
+    def __init__(self):
+
+        # need to setup i, idelays, G, hist, randn
+
+        # build module
+        kernel_pars = {k:None for k in self.kernel_pars}
+        self.mod = self.SrcMod(self.kernel_src.substitute(**kernel_pars))
 
         a = randn(n, n).astype(float32)
         d = abs(randn(n,n)/dt).astype(int32)
@@ -96,6 +102,10 @@ class gpustep(object):
     def step(self, grid=(8, 1)):
         self.func(self.ag, self.hg, self.dg, block=(32,2,1), grid=grid)
 
+    def get_state(self):
+        self.get_state(self.i, self.gpu_hist, self.gpu_xout)
+        self.xout = self.gpu_xout.get()
+        return self.xout
 
 
 class sdde2(object):

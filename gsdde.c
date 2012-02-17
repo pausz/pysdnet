@@ -1,6 +1,6 @@
 /*
 
-CUDA kernel for integrating an SDDE.
+CUDA kernel template for integrating an SDDE.
 
 o  write pycuda wrapper
 o  test against cpu versions
@@ -9,9 +9,16 @@ o  work out redundant partition scheme
 
 template params: threadid, N, horizon, k, dt
 
+functions
+
+    - wrap() takes the step number and returns the corresponding step number 
+        assuming periodic boundaries.
+
+    - step() 
+
 */
 
-__device__ int wrap(int i, int h) {
+inline __device__ int wrap(int i) {
 
     if (i >= 0)
         return i % $horizon;
@@ -19,7 +26,7 @@ __device__ int wrap(int i, int h) {
         if (i == - $horizon)
             return 0;
         else
-            return h + (i % $horizon);
+            return $horizon + (i % $horizon);
 
 }
 
@@ -38,13 +45,23 @@ __global__ void step(int i, // current step number/count
 
     input = 0.0;
     for (int idx=0; idx<$N; idx++)
-        input += G[j*$N + idx]*hist[$N*(wrap((i - 1 - idelays[j*$N + idx]), $horizon)) + idx];
+        input += G[j*$N + idx]*hist[$N*wrap(i - 1 - idelays[j*$N + idx]) + idx];
 
-     xj = hist[$N*wrap(i - 1, $horizon) + j];
-    dxj = (xj - 5.0*pow(xj, 3.0))/5.0 + $k*input/$N;
+     xj = hist[$N*wrap(i - 1) + j];
+    dxj = $dt*(  (xj - 5.0*pow(xj, 3.0))/5.0 + $k*input/$N + randn[j]/5.0 );
 
-    // synch threads before writing history; allows us to loop in kernel?
     __synchthreads();
-    hist[$N*wrap(i, $horizon) + j] = xj + $dt*(dxj + randn[j]/5.0);
+    hist[$N*wrap(i) + j] = xj + dxj;
+
+}
+
+
+__global__ void get_state(int i, // current step no.
+                          float * __restrict__ hist, // history
+                          float * __restrict__ xout) // output
+
+{
+    int j = $threadid;
+    xout[j] = hist[$N*wrap(i) + j];
 }
 
