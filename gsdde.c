@@ -2,19 +2,14 @@
 
 CUDA kernel template for integrating an SDDE.
 
-o  write pycuda wrapper
-o  test against cpu versions
-o  look at delay distributions
-o  work out redundant partition scheme
-
 template params: threadid, N, horizon, k, dt
 
 functions
 
-    - wrap() takes the step number and returns the corresponding step number 
+    - wrap() takes the step number and returns the corresponding step number
         assuming periodic boundaries.
 
-    - step() 
+    - step()
 
 */
 

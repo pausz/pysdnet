@@ -5,6 +5,19 @@ Simulating a stochastic delayed differential equation
 - computationally complete draft in numpy here
 - goal to have a pycuda version running faster
 
+
+TODOs
+-----
+
+o  write pycuda wrapper
+o  test against cpu versions
+o  look at delay distributions
+o  work out redundant partition scheme
+
+block/grid setup
+----------------
+
+
 based on programmin guide p171
 and moderngpu.com
 
@@ -26,9 +39,9 @@ on m2050 - 14 mproc, 7168 threads - surface
 remember: you can't loop inside kernel because semantics
 of shared state not consistent! (but py fn calls are ~107 ns)
 
-normally we'd partition neural space by delays, but if we 
+normally we'd partition neural space by delays, but if we
 overlap the domains (and use identical seeds for duplicate
-nodes) we can achieve locality on both sides. 
+nodes) we can achieve locality on both sides.
 
 """
 
