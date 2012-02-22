@@ -1,12 +1,10 @@
 pysdnet
 =======
 
-that's pronounced, Sydney, he he
-
 what
 ----
 
-This is a humble library to integrate stochastic delayed differential equations
+This is a library to integrate stochastic delayed differential equations
 that resemble more or less networks. A pure NumPy integrator is available,
 and a more efficient C version runs quite fine as well. A CUDA template is
 present, and I'm currently waiting to test and optimize it, but previous tests
