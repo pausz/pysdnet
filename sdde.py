@@ -88,7 +88,7 @@ class gpustep(object):
 
     kernel_pars = ['threadid', 'N', 'horizon', 'k', 'dt']
 
-    with open('./gsdde.c', 'r') as fd:
+    with open('./gsdde.cu', 'r') as fd:
         kernel_src = Template(fd.read())
 
     # TODO rewrite for new kernel
@@ -108,8 +108,10 @@ class gpustep(object):
         func = mod.get_function('step')
         ag, dg, hg = map(gary.to_gpu, [a, d, h])
 
+        """
         for v in ['a', 'd', 'h', 'hrzn', 'mod', 'func', 'ag', 'dg', 'hg']:
             exec("self.%s = %s" % (v, v))
+        """
 
     # TODO rewrite for new kernel
     def step(self, grid=(8, 1)):
@@ -194,8 +196,10 @@ if __name__ == '__main__':
     # for idx, k in enumerate(e**r_[-3:2:100j]):
 
     dt = 0.02
-    k = 1.0
-    tf = 10000
+    k = 4.2
+    tf = 5000
+    N = 50
+    NFFT = 4096
     ts = r_[0:tf:dt]
     smoothn = 10
 
@@ -208,10 +212,11 @@ if __name__ == '__main__':
     # without significant delay
     tic = time.time()
     reset_rng()
-    ys = run(500, tf=tf, dt=dt, delayscale=0.1, k=k)
-    print 'took ', time.time() - tic
+    ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k)
+    print 'numpy integration without delays took ', time.time() - tic
     subplot(531)
     [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    grid(1)
     subplot(534)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
@@ -220,21 +225,26 @@ if __name__ == '__main__':
     subplot(537)
     es, ev = eig(cv)
     plot(es)
+    grid(1)
     subplot(5,3,10)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts, pc, alpha=0.5) for pc in pcas]
+    grid(1)
     subplot(5,3,13)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
-    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    xlim([0, freq.max()])
+    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    specgram(pcas[0], NFFT, 1000.0/dt)
+    ylim([0, 100])
+    #grid(1)
 
     # with delay
     tic = time.time()
     reset_rng()
-    ys = run(500, tf=tf, dt=dt, delayscale=50, k=k)
-    print 'took ', time.time() - tic
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k)
+    print 'numpy integration with delays took ', time.time() - tic
     subplot(532)
     [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    grid(1)
     subplot(535)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
@@ -243,21 +253,27 @@ if __name__ == '__main__':
     subplot(538)
     es, ev = eig(cv)
     plot(es)
+    grid(1)
     subplot(5,3,11)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts, pc, alpha=0.5) for pc in pcas]
+    grid(1)
     subplot(5,3,14)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
-    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    xlim([0, freq.max()])
+    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    specgram(pcas[0], NFFT, 1000.0/dt)
+    ylim([0, 100])
+    #xlim([0, freq.max()])
+    #grid(1)
 
     # with delay, C integrator
     tic = time.time()
     reset_rng()
-    ys = run(500, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
-    print 'took ', time.time() - tic
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
+    print 'C integration with delays took ', time.time() - tic
     subplot(533)
     [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    grid(1)
     subplot(536)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
@@ -266,14 +282,20 @@ if __name__ == '__main__':
     subplot(539)
     es, ev = eig(cv)
     plot(es)
+    grid(1)
     subplot(5,3,12)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts, pc, alpha=0.5) for pc in pcas]
+    grid(1)
     subplot(5,3,15)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
-    [loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    xlim([0, freq.max()])
+    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    specgram(pcas[0], NFFT, 1000.0/dt)
+    ylim([0, 100])
+    #xlim([0, freq.max()])
+    #grid(1)
 
     suptitle('k=%s' % (k,))
     #savefig('compare%02d.png'%(idx,))
+    show()
     #close()
