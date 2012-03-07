@@ -49,6 +49,15 @@ import ctypes
 import os.path
 from string import Template
 
+try:
+    import pyublas
+    import pycuda.autoinit
+    import pycuda.gpuarray as gary
+    from pycuda.compiler import SourceModule as SrcMod
+except:
+    print "couldn't load PyCUDA libraries"
+
+
 from pylab import *
 import numpy.random
 from numpy.ctypeslib import ndpointer
@@ -78,13 +87,6 @@ class c_step(object):
 
 
 class gpustep(object):
-
-    # don't have these installed
-    """
-    import pycuda.autoinit
-    import pycuda.gpuarray as gary
-    from pycuda.compiler import SourceModule as SrcMod
-    """
 
     kernel_pars = ['threadid', 'N', 'horizon', 'k', 'dt']
 
