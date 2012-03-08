@@ -46,16 +46,21 @@ nodes) we can achieve locality on both sides.
 """
 
 import ctypes
-import os.path
+import os, os.path
 from string import Template
 
 try:
     import pyublas
     import pycuda.autoinit
     import pycuda.gpuarray as gary
-    from pycuda.compiler import SourceModule as SrcMod
-except:
-    print "couldn't load PyCUDA libraries"
+    from pycuda.compiler import SourceModule
+except Exception as exc:
+    print "failed to load PyCUDA libraries", exc
+    path, ldpath = os.environ['PATH'], os.environ['LD_LIBRARY_PATH']
+    if not 'cuda' in path:
+        print 'cuda not in your PATH: ', path
+    if not 'cuda' in ldpath:
+        print 'cuda not in your LD_LIBRARY_PATH', ldpath
 
 
 from pylab import *
@@ -89,40 +94,50 @@ class c_step(object):
 class gpustep(object):
 
     kernel_pars = ['threadid', 'N', 'horizon', 'k', 'dt']
-
     with open('./gsdde.cu', 'r') as fd:
         kernel_src = Template(fd.read())
 
-    # TODO rewrite for new kernel
     def __init__(self):
+        self._first_call = True
 
-        # need to setup i, idelays, G, hist, randn
+    def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
 
-        # build module
-        kernel_pars = {k:None for k in self.kernel_pars}
-        self.mod = self.SrcMod(self.kernel_src.substitute(**kernel_pars))
+        if self._first_call:
 
-        a = randn(n, n).astype(float32)
-        d = abs(randn(n,n)/dt).astype(int32)
-        hrzn = d.max()
-        h = vstack((randn(n), zeros((hrzn,n))))
-        mod = build_mod(n, hrzn, k=k, dt=dt)
-        func = mod.get_function('step')
-        ag, dg, hg = map(gary.to_gpu, [a, d, h])
+            #  1. allocate gpu memory for idelays, G, hist, randn
+            self._gpu_idelays = gary.to_gpu(idelays.astype(int32).flatten())
+            self._gpu_G       = gary.to_gpu(G.astype(float32).flatten())
+            self._gpu_hist    = gary.to_gpu(hist.astype(float32).flatten())
+            self._gpu_randn   = gary.to_gpu(zeros((N,), dtype=float32))
+            self._gpu_xout    = gary.to_gpu(zeros((N,), dtype=float32))
 
-        """
-        for v in ['a', 'd', 'h', 'hrzn', 'mod', 'func', 'ag', 'dg', 'hg']:
-            exec("self.%s = %s" % (v, v))
-        """
+            #  2. build kernel module
+            self.build_mod(threadid='threadId.x', k=k, N=N, dt=dt,
+                           horizon=horizon)
 
-    # TODO rewrite for new kernel
-    def step(self, grid=(8, 1)):
-        self.func(self.ag, self.hg, self.dg, block=(32,2,1), grid=grid)
+            #  3. prepare function calls (look in docs on this, not sure)
+            #     a. step
+            #     b. get_state
 
-    def get_state(self):
-        self.get_state(self.i, self.gpu_hist, self.gpu_xout)
-        self.xout = self.gpu_xout.get()
-        return self.xout
+            # finished prep, don't on subsequent calls
+            self._first_call = False
+
+        # put randn values to gpu
+        self._gpu_randn.set(randn(N).astype(float32))
+
+        # call CUDA step
+        self._cuda_step(i, self._gpu_idelays, self._gpu_G,
+                           self._gpu_hist, self._gpu_randn)
+
+        # call CUDA get_state and update cpu arrays
+        self._cuda_get_state(i, self._gpu_hist, self._gpu_xout)
+        hist[i % horizon, :] = self._gpu_xout.get()
+
+
+    def build_mod(self, **kwds):
+        self._cuda_mod = SourceModule(self.kernel_src.substitute(**kwds))
+        self._cuda_step = self._cuda_mod.get_function('step')
+        self._cuda_get_state = self._cuda_mod.get_function('get_state')
 
 
 class sdde2(object):
@@ -199,7 +214,7 @@ if __name__ == '__main__':
 
     dt = 0.02
     k = 4.2
-    tf = 5000
+    tf = 1000
     N = 50
     NFFT = 4096
     ts = r_[0:tf:dt]
@@ -217,7 +232,7 @@ if __name__ == '__main__':
     ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k)
     print 'numpy integration without delays took ', time.time() - tic
     subplot(531)
-    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
     subplot(534)
     ys0 = ys - ys.mean(axis=0)
@@ -230,7 +245,7 @@ if __name__ == '__main__':
     grid(1)
     subplot(5,3,10)
     pcas = dot(ev[:3, :], ys.T)
-    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
     subplot(5,3,13)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
@@ -245,7 +260,7 @@ if __name__ == '__main__':
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k)
     print 'numpy integration with delays took ', time.time() - tic
     subplot(532)
-    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
     subplot(535)
     ys0 = ys - ys.mean(axis=0)
@@ -258,7 +273,7 @@ if __name__ == '__main__':
     grid(1)
     subplot(5,3,11)
     pcas = dot(ev[:3, :], ys.T)
-    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
     subplot(5,3,14)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
@@ -274,7 +289,7 @@ if __name__ == '__main__':
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
     print 'C integration with delays took ', time.time() - tic
     subplot(533)
-    [plot(ts, y, 'k', alpha=0.1) for y in ys.T]
+    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
     subplot(536)
     ys0 = ys - ys.mean(axis=0)
@@ -287,7 +302,7 @@ if __name__ == '__main__':
     grid(1)
     subplot(5,3,12)
     pcas = dot(ev[:3, :], ys.T)
-    [plot(ts, pc, alpha=0.5) for pc in pcas]
+    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
     subplot(5,3,15)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
@@ -296,6 +311,19 @@ if __name__ == '__main__':
     ylim([0, 100])
     #xlim([0, freq.max()])
     #grid(1)
+
+    # delayed, GPU kernel, numpy noise (exact numerical match)
+    # TODO change above sims to run w/ float32
+
+    # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
+
+    # delayed, GPU kernel, GPU noise (analyses should be similar)
+
+    # delayed, overlapping GPU kernels, (exact match with non overlapping)
+
+    # GPU w/ optimized dot product
+
+    # etc.
 
     suptitle('k=%s' % (k,))
     #savefig('compare%02d.png'%(idx,))
