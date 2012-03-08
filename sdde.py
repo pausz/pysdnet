@@ -112,6 +112,7 @@ class gpustep(object):
             self._gpu_xout    = gary.to_gpu(zeros((N,), dtype=float32))
 
             #  2. build kernel module
+            # TODO verify threadid, this is a optimization point
             self.build_mod(threadid='threadId.x', k=k, N=N, dt=dt,
                            horizon=horizon)
 
@@ -124,6 +125,8 @@ class gpustep(object):
 
         # put randn values to gpu
         self._gpu_randn.set(randn(N).astype(float32))
+
+        # TODO fix these calls; they need block/grid info, etc, cf docs
 
         # call CUDA step
         self._cuda_step(i, self._gpu_idelays, self._gpu_G,
