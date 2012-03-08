@@ -80,6 +80,7 @@ try:
     import pycuda.autoinit
     import pycuda.gpuarray as gary
     from pycuda.compiler import SourceModule
+    from pycuda.tools import DeviceData, OccupancyRecord
 except Exception as exc:
     print "failed to load PyCUDA libraries", exc
     path, ldpath = os.environ['PATH'], os.environ['LD_LIBRARY_PATH']
@@ -116,6 +117,9 @@ class c_step(object):
     def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
         self.cfunc(i, horizon, nids, idelays, dt, k, N, x, G, hist, randn(N))
 
+def orinfo(n):
+    orec = OccupancyRecord(DeviceData(), n)
+    print 'tb_per_mp', orec.tb_per_mp, 'limitedby', orec.limited_by, 'warps per mp', orec.warps_per_mp, 'occupancy', orec.occupancy
 
 class gpustep(object):
 
@@ -126,6 +130,7 @@ class gpustep(object):
     def __init__(self, dim_b=0):
         self._first_call = True
         self._dim_b = dim_b
+        self.devicedata = DeviceData
 
     def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
 
