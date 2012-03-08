@@ -43,6 +43,32 @@ normally we'd partition neural space by delays, but if we
 overlap the domains (and use identical seeds for duplicate
 nodes) we can achieve locality on both sides.
 
+
+test application block/grid
+---------------------------
+
+In our application, we expect networks with 1024 nodes. We then
+divide this into block and grid sizes, N=b*g, where the ratio
+is adjustable via an integer r
+
+::
+
+    block = (32*2**r, 1, 1)
+    grid  = (32*2**(-r), 1)
+
+where r = 0 for equal block and grid sizes. Given arbitrary N,
+
+::
+
+    N = b*g
+    b = 2**(a + b)
+    g = 2**(a - b)
+    N = 2**(2*a)
+    a = 1/2 log(N)/log(2)
+
+where a=5, b=0 for equal case shown above. In general, we should
+assume and require than N % 16 == 0.
+
 """
 
 import ctypes
@@ -97,12 +123,20 @@ class gpustep(object):
     with open('./gsdde.cu', 'r') as fd:
         kernel_src = Template(fd.read())
 
-    def __init__(self):
+    def __init__(self, dim_b=0):
         self._first_call = True
+        self._dim_b = dim_b
 
     def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
 
         if self._first_call:
+
+            if N % 32:
+                raise TypeError('N should be multiple of 32, got N=%d' % (N,))
+            else:
+                self._dim_a = log(N)/log(2)/2
+                self._block_size = int(2**(self._dim_a + self._dim_b))
+                self._grid_size  = int(2**(self._dim_a - self._dim_b))
 
             #  1. allocate gpu memory for idelays, G, hist, randn
             self._gpu_idelays = gary.to_gpu(idelays.astype(int32).flatten())
@@ -112,9 +146,8 @@ class gpustep(object):
             self._gpu_xout    = gary.to_gpu(zeros((N,), dtype=float32))
 
             #  2. build kernel module
-            # TODO verify threadid, this is a optimization point
-            self.build_mod(threadid='threadId.x', k=k, N=N, dt=dt,
-                           horizon=horizon)
+            self.build_mod(threadid='blockIdx.x*blockDim.x + threadIdx.x',
+                           k=k, N=N, dt=dt, horizon=horizon)
 
             #  3. prepare function calls (look in docs on this, not sure)
             #     a. step
@@ -130,7 +163,9 @@ class gpustep(object):
 
         # call CUDA step
         self._cuda_step(i, self._gpu_idelays, self._gpu_G,
-                           self._gpu_hist, self._gpu_randn)
+                           self._gpu_hist, self._gpu_randn,
+                           block=(self._block_size, 1, 1),
+                           grid=(self._grid_size, 1))
 
         # call CUDA get_state and update cpu arrays
         self._cuda_get_state(i, self._gpu_hist, self._gpu_xout)
