@@ -270,8 +270,8 @@ if __name__ == '__main__':
 
     dt = 0.02
     k = 4.2
-    tf = 1000
-    N = 256
+    tf = 100
+    N = 1024
     NFFT = 4096
     ts = r_[0:tf:dt]
     smoothn = 10
@@ -287,23 +287,23 @@ if __name__ == '__main__':
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k)
     print 'numpy integration without delays took ', time.time() - tic
-    subplot(531)
+    subplot(541)
     [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
-    subplot(534)
+    subplot(545)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(537)
+    subplot(549)
     es, ev = eig(cv)
     plot(es)
     grid(1)
-    subplot(5,3,10)
+    subplot(5,4,13)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
-    subplot(5,3,13)
+    subplot(5,4,17)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
     #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     specgram(pcas[0], NFFT, 1000.0/dt)
@@ -315,23 +315,23 @@ if __name__ == '__main__':
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k)
     print 'numpy integration with delays took ', time.time() - tic
-    subplot(532)
+    subplot(542)
     [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
-    subplot(535)
+    subplot(546)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(538)
+    subplot(5,4, 10)
     es, ev = eig(cv)
     plot(es)
     grid(1)
-    subplot(5,3,11)
+    subplot(5,4,14)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
-    subplot(5,3,14)
+    subplot(5,4,18)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
     #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     specgram(pcas[0], NFFT, 1000.0/dt)
@@ -344,23 +344,23 @@ if __name__ == '__main__':
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
     print 'C integration with delays took ', time.time() - tic
-    subplot(533)
+    subplot(543)
     [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
-    subplot(536)
+    subplot(547)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(539)
+    subplot(5,4,11)
     es, ev = eig(cv)
     plot(es)
     grid(1)
-    subplot(5,3,12)
+    subplot(5,4,15)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
-    subplot(5,3,15)
+    subplot(5,4,19)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
     #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     specgram(pcas[0], NFFT, 1000.0/dt)
@@ -373,23 +373,23 @@ if __name__ == '__main__':
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpustep())
     print 'gpu integration with delays took ', time.time() - tic
-    subplot(533)
+    subplot(544)
     [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
     grid(1)
-    subplot(536)
+    subplot(548)
     ys0 = ys - ys.mean(axis=0)
     cv = cov(ys0.T)
     pcolor(cv)
     colorbar()
-    subplot(539)
+    subplot(5,4,12)
     es, ev = eig(cv)
     plot(es)
     grid(1)
-    subplot(5,3,12)
+    subplot(5,4,16)
     pcas = dot(ev[:3, :], ys.T)
     [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
     grid(1)
-    subplot(5,3,15)
+    subplot(5,4,20)
     freq = fftfreq(pcas.shape[1], d=dt/1000)
     #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
     specgram(pcas[0], NFFT, 1000.0/dt)
@@ -409,7 +409,8 @@ if __name__ == '__main__':
 
     # etc.
 
+    print 'saving figure'
     suptitle('k=%s' % (k,))
     savefig('compare.png')
     #show()
-    #close()
+    close()
