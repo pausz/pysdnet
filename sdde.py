@@ -182,7 +182,9 @@ class gpustep(object):
                         grid=(self._grid_size, 1))
 
         # call CUDA get_state and update cpu arrays
-        self._cuda_get_state(self._gpu_i, self._gpu_hist, self._gpu_xout)
+        self._cuda_get_state(self._gpu_i, self._gpu_hist, self._gpu_xout,
+                             block=(self._block_size, 1, 1),
+                             grid=(self._grid_size, 1))
         hist[i % horizon, :] = self._gpu_xout.get()
 
 
