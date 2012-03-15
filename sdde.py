@@ -71,6 +71,8 @@ assume and require than N % 16 == 0.
 
 """
 
+import matplotlib as mpl; mpl.use('Agg')
+
 import ctypes
 import os, os.path
 from string import Template
@@ -269,7 +271,7 @@ if __name__ == '__main__':
     dt = 0.02
     k = 4.2
     tf = 1000
-    N = 50
+    N = 256
     NFFT = 4096
     ts = r_[0:tf:dt]
     smoothn = 10
@@ -367,6 +369,34 @@ if __name__ == '__main__':
     #grid(1)
 
     # delayed, GPU kernel, numpy noise (exact numerical match)
+    tic = time.time()
+    reset_rng()
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpustep())
+    print 'gpu integration with delays took ', time.time() - tic
+    subplot(533)
+    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+    grid(1)
+    subplot(536)
+    ys0 = ys - ys.mean(axis=0)
+    cv = cov(ys0.T)
+    pcolor(cv)
+    colorbar()
+    subplot(539)
+    es, ev = eig(cv)
+    plot(es)
+    grid(1)
+    subplot(5,3,12)
+    pcas = dot(ev[:3, :], ys.T)
+    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
+    grid(1)
+    subplot(5,3,15)
+    freq = fftfreq(pcas.shape[1], d=dt/1000)
+    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+    specgram(pcas[0], NFFT, 1000.0/dt)
+    ylim([0, 100])
+    #xlim([0, freq.max()])
+    #grid(1)
+
     # TODO change above sims to run w/ float32
 
     # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
@@ -380,6 +410,6 @@ if __name__ == '__main__':
     # etc.
 
     suptitle('k=%s' % (k,))
-    #savefig('compare%02d.png'%(idx,))
-    show()
+    savefig('compare.png')
+    #show()
     #close()
