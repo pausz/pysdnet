@@ -76,7 +76,11 @@ import os, os.path
 from string import Template
 
 try:
-    import pyublas
+	import pyublas
+except ImportError as exc:
+	print "failed to load pyublas, some data type errors may occur"
+
+try:
     import pycuda.autoinit
     import pycuda.gpuarray as gary
     from pycuda.compiler import SourceModule
@@ -108,11 +112,14 @@ class c_step(object):
 
     """
 
-    cfunc = ctypes.CDLL('./csdde.so').sdde_step
-    cfunc.restype = ctypes.c_voidp
-    cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
-        ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
-        ndpcontig(), ndpcontig()]
+	try:
+			cfunc = ctypes.CDLL('./csdde.so').sdde_step
+			cfunc.restype = ctypes.c_voidp
+			cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
+				ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
+				ndpcontig(), ndpcontig()]
+	except:
+		print 'no c step available'
 
     def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
         self.cfunc(i, horizon, nids, idelays, dt, k, N, x, G, hist, randn(N))
