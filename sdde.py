@@ -151,7 +151,7 @@ class gpustep(object):
                 self._grid_size  = int(2**(self._dim_a - self._dim_b))
 
             #  1. allocate gpu memory for i, idelays, G, hist, randn
-
+            self._gpu_i       = gary.to_gpu(zeros((1,), dtype=int32))
             self._gpu_idelays = gary.to_gpu(idelays.astype(int32).flatten())
             self._gpu_G       = gary.to_gpu(G.astype(float32).flatten())
             self._gpu_hist    = gary.to_gpu(hist.astype(float32).flatten())
@@ -175,13 +175,14 @@ class gpustep(object):
         # TODO fix these calls; they need block/grid info, etc, cf docs
 
         # call CUDA step
-        self._cuda_step(i, self._gpu_idelays, self._gpu_G,
-                           self._gpu_hist, self._gpu_randn,
-                           block=(self._block_size, 1, 1),
-                           grid=(self._grid_size, 1))
+        self._gpu_i.set(array([i]).astype(int32))
+        self._cuda_step(self._gpu_i, self._gpu_idelays, self._gpu_G,
+                        self._gpu_hist, self._gpu_randn,
+                        block=(self._block_size, 1, 1),
+                        grid=(self._grid_size, 1))
 
         # call CUDA get_state and update cpu arrays
-        self._cuda_get_state(i, self._gpu_hist, self._gpu_xout)
+        self._cuda_get_state(self._gpu_i, self._gpu_hist, self._gpu_xout)
         hist[i % horizon, :] = self._gpu_xout.get()
 
 
