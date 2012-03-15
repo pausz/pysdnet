@@ -112,14 +112,14 @@ class c_step(object):
 
     """
 
-	try:
-			cfunc = ctypes.CDLL('./csdde.so').sdde_step
-			cfunc.restype = ctypes.c_voidp
-			cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
-				ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
-				ndpcontig(), ndpcontig()]
-	except:
-		print 'no c step available'
+    try:
+        cfunc = ctypes.CDLL('./csdde.so').sdde_step
+        cfunc.restype = ctypes.c_voidp
+        cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
+            ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
+            ndpcontig(), ndpcontig()]
+    except:
+        print 'no c step available'
 
     def __call__(self, i, horizon, nids, idelays, dt, k, N, x, G, hist):
         self.cfunc(i, horizon, nids, idelays, dt, k, N, x, G, hist, randn(N))
