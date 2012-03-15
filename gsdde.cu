@@ -26,7 +26,7 @@ inline __device__ int wrap(int i) {
 }
 
 
-__global__ void step(int i, // current step number/count
+__global__ void step(int * _i, // current step number/count
                      int * __restrict__ idelays, // delays in steps (N, N)
                      float * __restrict__ G, // coupling matrix (N, N)
                      float * __restrict__ hist, // history (horizon + 1, N)
@@ -34,7 +34,7 @@ __global__ void step(int i, // current step number/count
 
 {
 
-    int j = $threadid;
+    int i = _i[0], j = $threadid;
 
     float xj, dxj, input;
 
@@ -43,20 +43,20 @@ __global__ void step(int i, // current step number/count
         input += G[j*$N + idx]*hist[$N*wrap(i - 1 - idelays[j*$N + idx]) + idx];
 
      xj = hist[$N*wrap(i - 1) + j];
-    dxj = $dt*(  (xj - 5.0*pow(xj, 3.0))/5.0 + $k*input/$N + randn[j]/5.0 );
+    dxj = $dt*(  (xj - 5.0*pow((float)xj, 3.0f))/5.0 + $k*input/$N + randn[j]/5.0 );
 
-    __synchthreads();
+    __threadfence();
     hist[$N*wrap(i) + j] = xj + dxj;
 
 }
 
 
-__global__ void get_state(int i, // current step no.
+__global__ void get_state(int * _i, // current step no.
                           float * __restrict__ hist, // history
                           float * __restrict__ xout) // output
 
 {
-    int j = $threadid;
+    int i = _i[0], j = $threadid;
     xout[j] = hist[$N*wrap(i) + j];
 }
 

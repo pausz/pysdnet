@@ -150,7 +150,8 @@ class gpustep(object):
                 self._block_size = int(2**(self._dim_a + self._dim_b))
                 self._grid_size  = int(2**(self._dim_a - self._dim_b))
 
-            #  1. allocate gpu memory for idelays, G, hist, randn
+            #  1. allocate gpu memory for i, idelays, G, hist, randn
+
             self._gpu_idelays = gary.to_gpu(idelays.astype(int32).flatten())
             self._gpu_G       = gary.to_gpu(G.astype(float32).flatten())
             self._gpu_hist    = gary.to_gpu(hist.astype(float32).flatten())
