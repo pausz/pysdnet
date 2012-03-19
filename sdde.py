@@ -271,7 +271,7 @@ if __name__ == '__main__':
     dt = 0.02
     k = 4.2
     tf = 5
-    N = 1024
+    N = 4096
     NFFT = 4096
     ts = r_[0:tf:dt]
     smoothn = 10
@@ -412,7 +412,7 @@ if __name__ == '__main__':
     # etc.
 
     print 'saving figure'
-    suptitle('k=%s' % (k,))
-    savefig('compare.png')
+    #suptitle('k=%s' % (k,))
+    #savefig('compare.png')
     #show()
     close()
