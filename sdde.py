@@ -270,7 +270,7 @@ if __name__ == '__main__':
 
     dt = 0.02
     k = 4.2
-    tf = 100
+    tf = 5
     N = 1024
     NFFT = 4096
     ts = r_[0:tf:dt]
@@ -371,7 +371,8 @@ if __name__ == '__main__':
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpustep())
+    gpstep = gpustep()
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep)
     print 'gpu integration with delays took ', time.time() - tic
     subplot(544)
     [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
@@ -397,6 +398,7 @@ if __name__ == '__main__':
     #xlim([0, freq.max()])
     #grid(1)
 
+    print orinfo(gpstep._block_size)
     # TODO change above sims to run w/ float32
 
     # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
