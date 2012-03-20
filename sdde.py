@@ -128,7 +128,13 @@ class c_step(object):
 
 def orinfo(n):
     orec = OccupancyRecord(DeviceData(), n)
-    print 'tb_per_mp', orec.tb_per_mp, 'limitedby', orec.limited_by, 'warps per mp', orec.warps_per_mp, 'occupancy', orec.occupancy
+    print """occupancy record information
+        thread blocks per multiprocessor - %d
+        warps per multiprocessor - %d
+        limited by - %s
+        occupancy - %f
+    """ % (orec.tb_per_mp, orec.warps_per_mp, orec.limited_by, orec.occupancy)
+
 
 class gpustep(object):
 
@@ -145,12 +151,16 @@ class gpustep(object):
 
         if self._first_call:
 
-            if N % 32:
-                raise TypeError('N should be multiple of 32, got N=%d' % (N,))
+            if log(N)/log(2) % 2:
+                raise TypeError('N should be even power of 2, got N=%d' % (N,))
             else:
-                self._dim_a = log(N)/log(2)/2
+                self._dim_a = log(N)/log(4)
                 self._block_size = int(2**(self._dim_a + self._dim_b))
                 self._grid_size  = int(2**(self._dim_a - self._dim_b))
+                orinfo(self._block_size)
+                print 'block size', self._block_size
+                print 'grid size', self._grid_size
+                print 'dim_a', self._dim_a
 
             #  1. allocate gpu memory for i, idelays, G, hist, randn
             self._gpu_i       = gary.to_gpu(zeros((1,), dtype=int32))
@@ -159,6 +169,11 @@ class gpustep(object):
             self._gpu_hist    = gary.to_gpu(hist.astype(float32).flatten())
             self._gpu_randn   = gary.to_gpu(zeros((N,), dtype=float32))
             self._gpu_xout    = gary.to_gpu(zeros((N,), dtype=float32))
+
+            mem_use = 0
+            for arr in ['i', 'idelays', 'G', 'hist', 'randn', 'xout']:
+                mem_use += eval('self._gpu_' + arr).get().nbytes
+            print 'using %d MB on gpu' % (mem_use/2**20)
 
             #  2. build kernel module
             self.build_mod(threadid='blockIdx.x*blockDim.x + threadIdx.x',
@@ -237,24 +252,31 @@ class sdde2(object):
         hist[i%horizon,:] = x + dt*(dx+ randn(N)/5)
 
     def __call__(self, N, tf=50, dt=0.2, k=0.01, delayscale=1, step_fn=None,
-                    debug_out=False):
+                    debug_out=False, ds=1):
 
         # initialize
-        G = randn(N, N)
-        x = randn(N)
+        G = randn(N, N).astype(float32)
+        x = randn(N).astype(float32)
         idelays = (delayscale*abs(randn(N, N))/dt).astype(int32)
         horizon = idelays.max()
-        hist = zeros((horizon + 1, N))
+        hist = zeros((horizon + 1, N)).astype(float32)
         nids = tile(arange(N), (N, 1))
-        xout = zeros((int(tf/dt), N))
+        xout = zeros((int(tf/dt)/ds, N))
+
+        memuse = sum(map(lambda x: x.nbytes, [G, x, idelays, hist, xout]))
+        print 'cpu memuse %d MB' % (memuse/2**20, )
 
         if not step_fn:
             step_fn = self.step
 
         # step
-        for i in xrange(1, int(tf/dt)):
+        step_fn(1, horizon, nids, idelays, dt, k, N, x, G, hist)
+        tic = time.time()
+        for i in xrange(2, int(tf/dt)):
             step_fn(i, horizon, nids, idelays, dt, k, N, x, G, hist)
-            xout[i, :] = hist[i % horizon, :]
+            if i % ds == 0:
+                xout[i/ds, :] = hist[i % horizon, :]
+        self.toc = time.time() - tic
 
         if debug_out:
             return G, x, idelays, horizon, hist, nids, xout
@@ -268,137 +290,143 @@ if __name__ == '__main__':
 
     # for idx, k in enumerate(e**r_[-3:2:100j]):
 
-    dt = 0.02
+    dt = 0.1
+    ds = 10
     k = 4.2
-    tf = 5
+    tf = 10
     N = 4096
     NFFT = 4096
-    ts = r_[0:tf:dt]
+    ts = r_[0:tf:dt*ds]
     smoothn = 10
 
     smooth = lambda sig: convolve(sig, ones(smoothn), 'same')/smoothn
 
     run = sdde2()
 
-    figure(figsize=(14, 14))
-
-    # without significant delay
-    tic = time.time()
-    reset_rng()
-    ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k)
-    print 'numpy integration without delays took ', time.time() - tic
-    subplot(541)
-    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
-    grid(1)
-    subplot(545)
-    ys0 = ys - ys.mean(axis=0)
-    cv = cov(ys0.T)
-    pcolor(cv)
-    colorbar()
-    subplot(549)
-    es, ev = eig(cv)
-    plot(es)
-    grid(1)
-    subplot(5,4,13)
-    pcas = dot(ev[:3, :], ys.T)
-    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
-    grid(1)
-    subplot(5,4,17)
-    freq = fftfreq(pcas.shape[1], d=dt/1000)
-    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    specgram(pcas[0], NFFT, 1000.0/dt)
-    ylim([0, 100])
-    #grid(1)
-
-    # with delay
-    tic = time.time()
-    reset_rng()
-    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k)
-    print 'numpy integration with delays took ', time.time() - tic
-    subplot(542)
-    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
-    grid(1)
-    subplot(546)
-    ys0 = ys - ys.mean(axis=0)
-    cv = cov(ys0.T)
-    pcolor(cv)
-    colorbar()
-    subplot(5,4, 10)
-    es, ev = eig(cv)
-    plot(es)
-    grid(1)
-    subplot(5,4,14)
-    pcas = dot(ev[:3, :], ys.T)
-    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
-    grid(1)
-    subplot(5,4,18)
-    freq = fftfreq(pcas.shape[1], d=dt/1000)
-    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    specgram(pcas[0], NFFT, 1000.0/dt)
-    ylim([0, 100])
-    #xlim([0, freq.max()])
-    #grid(1)
-
-    # with delay, C integrator
-    tic = time.time()
-    reset_rng()
-    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step())
-    print 'C integration with delays took ', time.time() - tic
-    subplot(543)
-    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
-    grid(1)
-    subplot(547)
-    ys0 = ys - ys.mean(axis=0)
-    cv = cov(ys0.T)
-    pcolor(cv)
-    colorbar()
-    subplot(5,4,11)
-    es, ev = eig(cv)
-    plot(es)
-    grid(1)
-    subplot(5,4,15)
-    pcas = dot(ev[:3, :], ys.T)
-    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
-    grid(1)
-    subplot(5,4,19)
-    freq = fftfreq(pcas.shape[1], d=dt/1000)
-    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    specgram(pcas[0], NFFT, 1000.0/dt)
-    ylim([0, 100])
-    #xlim([0, freq.max()])
-    #grid(1)
+    plot = False
+    if plot:
+        figure(figsize=(14, 14))
 
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    gpstep = gpustep()
-    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep)
-    print 'gpu integration with delays took ', time.time() - tic
-    subplot(544)
-    [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
-    grid(1)
-    subplot(548)
-    ys0 = ys - ys.mean(axis=0)
-    cv = cov(ys0.T)
-    pcolor(cv)
-    colorbar()
-    subplot(5,4,12)
-    es, ev = eig(cv)
-    plot(es)
-    grid(1)
-    subplot(5,4,16)
-    pcas = dot(ev[:3, :], ys.T)
-    [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
-    grid(1)
-    subplot(5,4,20)
-    freq = fftfreq(pcas.shape[1], d=dt/1000)
-    #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
-    specgram(pcas[0], NFFT, 1000.0/dt)
-    ylim([0, 100])
-    #xlim([0, freq.max()])
-    #grid(1)
+    gpstep = gpustep(dim_b = 3)
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
+    print 'gpu integration with delays took ', run.toc
+    if plot:
+        subplot(544)
+        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        grid(1)
+        subplot(548)
+        ys0 = ys - ys.mean(axis=0)
+        cv = cov(ys0.T)
+        pcolor(cv)
+        colorbar()
+        subplot(5,4,12)
+        es, ev = eig(cv)
+        plot(es)
+        grid(1)
+        subplot(5,4,16)
+        pcas = dot(ev[:3, :], ys.T)
+        [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
+        grid(1)
+        subplot(5,4,20)
+        freq = fftfreq(pcas.shape[1], d=dt/1000)
+        #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+        specgram(pcas[0], NFFT, 1000.0/dt)
+        ylim([0, 100])
+        #xlim([0, freq.max()])
+        #grid(1)
 
-    print orinfo(gpstep._block_size)
+
+    # without significant delay
+    tic = time.time()
+    reset_rng()
+    ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k, ds=ds)
+    print 'numpy integration without delays took ', run.toc
+    if plot:
+        subplot(541)
+        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        grid(1)
+        subplot(545)
+        ys0 = ys - ys.mean(axis=0)
+        cv = cov(ys0.T)
+        pcolor(cv)
+        colorbar()
+        subplot(549)
+        es, ev = eig(cv)
+        plot(es)
+        grid(1)
+        subplot(5,4,13)
+        pcas = dot(ev[:3, :], ys.T)
+        [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
+        grid(1)
+        subplot(5,4,17)
+        freq = fftfreq(pcas.shape[1], d=dt/1000)
+        #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+        specgram(pcas[0], NFFT, 1000.0/dt)
+        ylim([0, 100])
+
+    # with delay
+    tic = time.time()
+    reset_rng()
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, ds=ds)
+    print 'numpy integration with delays took ', run.toc
+    if plot:
+        subplot(542)
+        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        grid(1)
+        subplot(546)
+        ys0 = ys - ys.mean(axis=0)
+        cv = cov(ys0.T)
+        pcolor(cv)
+        colorbar()
+        subplot(5,4, 10)
+        es, ev = eig(cv)
+        plot(es)
+        grid(1)
+        subplot(5,4,14)
+        pcas = dot(ev[:3, :], ys.T)
+        [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
+        grid(1)
+        subplot(5,4,18)
+        freq = fftfreq(pcas.shape[1], d=dt/1000)
+        #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+        specgram(pcas[0], NFFT, 1000.0/dt)
+        ylim([0, 100])
+        #xlim([0, freq.max()])
+        #grid(1)
+
+    # with delay, C integrator
+    tic = time.time()
+    reset_rng()
+    #ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step(), ds=ds)
+    #print 'C integration with delays took ', run.toc
+    if plot:
+        subplot(543)
+        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        grid(1)
+        subplot(547)
+        ys0 = ys - ys.mean(axis=0)
+        cv = cov(ys0.T)
+        pcolor(cv)
+        colorbar()
+        subplot(5,4,11)
+        es, ev = eig(cv)
+        plot(es)
+        grid(1)
+        subplot(5,4,15)
+        pcas = dot(ev[:3, :], ys.T)
+        [plot(ts/1e3, pc, alpha=0.5) for pc in pcas]
+        grid(1)
+        subplot(5,4,19)
+        freq = fftfreq(pcas.shape[1], d=dt/1000)
+        #[loglog(freq, freq*smooth(abs(fft(pc))), alpha=0.5) for pc in pcas]
+        specgram(pcas[0], NFFT, 1000.0/dt)
+        ylim([0, 100])
+        #xlim([0, freq.max()])
+        #grid(1)
+
     # TODO change above sims to run w/ float32
 
     # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
@@ -411,7 +439,6 @@ if __name__ == '__main__':
 
     # etc.
 
-    print 'saving figure'
     #suptitle('k=%s' % (k,))
     #savefig('compare.png')
     #show()
