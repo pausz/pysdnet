@@ -183,26 +183,42 @@ class gpustep(object):
             #     a. step
             #     b. get_state
 
+            # list for timing individual parts
+            self._tics = {key: [] for key in ['rng', 'iset', 'step', 'get', 'hist']}
+
             # finished prep, don't on subsequent calls
             self._first_call = False
 
-        # put randn values to gpu
-        self._gpu_randn.set(randn(N).astype(float32))
 
-        # TODO fix these calls; they need block/grid info, etc, cf docs
+        # put randn values to gpu
+        tic = time.time()
+        self._gpu_randn.set(randn(N).astype(float32))
+        self._tics['rng'].append(time.time() - tic)
 
         # call CUDA step
+        tic = time.time()
         self._gpu_i.set(array([i]).astype(int32))
+        self._tics['iset'].append(time.time() - tic)
+
+
+        tic = time.time()
         self._cuda_step(self._gpu_i, self._gpu_idelays, self._gpu_G,
                         self._gpu_hist, self._gpu_randn,
                         block=(self._block_size, 1, 1),
                         grid=(self._grid_size, 1))
+        self._tics['step'].append(time.time() - tic)
 
         # call CUDA get_state and update cpu arrays
+        tic = time.time()
         self._cuda_get_state(self._gpu_i, self._gpu_hist, self._gpu_xout,
                              block=(self._block_size, 1, 1),
                              grid=(self._grid_size, 1))
-        hist[i % horizon, :] = self._gpu_xout.get()
+        xout = self._gpu_xout.get()
+        self._tics['get'].append(time.time() - tic)
+
+        tic = time.time()
+        hist[i % horizon, :] = xout
+        self._tics['hist'].append(time.time() - tic)
 
 
     def build_mod(self, **kwds):
@@ -293,7 +309,7 @@ if __name__ == '__main__':
     dt = 0.1
     ds = 10
     k = 4.2
-    tf = 10
+    tf = 100
     N = 4096
     NFFT = 4096
     ts = r_[0:tf:dt*ds]
@@ -313,6 +329,8 @@ if __name__ == '__main__':
     gpstep = gpustep(dim_b = 3)
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
     print 'gpu integration with delays took ', run.toc
+    for key in ['rng', 'iset', 'step', 'get', 'hist']:
+        print '%s took %f s' % (key, sum(gpstep._tics[key]))
     if plot:
         subplot(544)
         [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
