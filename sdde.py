@@ -162,6 +162,10 @@ class gpustep(object):
                 print 'grid size', self._grid_size
                 print 'dim_a', self._dim_a
 
+            self.layout = {'block': (self._block_size, 1, 1),
+                           'grid' : (self._grid_size, 1)}
+
+
             #  1. allocate gpu memory for i, idelays, G, hist, randn
             self._gpu_i       = gary.to_gpu(zeros((1,), dtype=int32))
             self._gpu_idelays = gary.to_gpu(idelays.astype(int32).flatten())
@@ -184,7 +188,7 @@ class gpustep(object):
             #     b. get_state
 
             # list for timing individual parts
-            self._tics = dict((key, []) for key in ['rng', 'iset', 'step', 'get', 'hist'])
+            self._rngtics = []
 
             # finished prep, don't on subsequent calls
             self._first_call = False
@@ -193,38 +197,25 @@ class gpustep(object):
         # put randn values to gpu
         tic = time.time()
         self._gpu_randn.set(randn(N).astype(float32))
-        self._tics['rng'].append(time.time() - tic)
+        self._rngtics.append(time.time() - tic)
 
         # call CUDA step
-        tic = time.time()
         self._gpu_i.set(array([i]).astype(int32))
-        self._tics['iset'].append(time.time() - tic)
-
-
-        tic = time.time()
         self._cuda_step(self._gpu_i, self._gpu_idelays, self._gpu_G,
-                        self._gpu_hist, self._gpu_randn,
-                        block=(self._block_size, 1, 1),
-                        grid=(self._grid_size, 1))
-        self._tics['step'].append(time.time() - tic)
+                        self._gpu_hist, self._gpu_xout, self._gpu_randn,
+                        **self.layout)
 
-        # call CUDA get_state and update cpu arrays
-        tic = time.time()
-        self._cuda_get_state(self._gpu_i, self._gpu_hist, self._gpu_xout,
-                             block=(self._block_size, 1, 1),
-                             grid=(self._grid_size, 1))
-        xout = self._gpu_xout.get()
-        self._tics['get'].append(time.time() - tic)
+        # call update host memory history
+        self._cuda_update_hist(self._gpu_i, self._gpu_hist, self._gpu_xout,
+                               **self.layout)
 
-        tic = time.time()
-        hist[i % horizon, :] = xout
-        self._tics['hist'].append(time.time() - tic)
+        hist[i % horizon, :] = self._gpu_xout.get()
 
 
     def build_mod(self, **kwds):
         self._cuda_mod = SourceModule(self.kernel_src.substitute(**kwds))
         self._cuda_step = self._cuda_mod.get_function('step')
-        self._cuda_get_state = self._cuda_mod.get_function('get_state')
+        self._cuda_update_hist = self._cuda_mod.get_function('update_hist')
 
 
 class sdde2(object):
@@ -290,7 +281,7 @@ class sdde2(object):
         tic = time.time()
         for i in xrange(2, int(tf/dt)):
             step_fn(i, horizon, nids, idelays, dt, k, N, x, G, hist)
-            if i % ds == 0:
+            if i % ds == 0 and i/ds < xout.shape[0]:
                 xout[i/ds, :] = hist[i % horizon, :]
         self.toc = time.time() - tic
 
@@ -307,11 +298,11 @@ if __name__ == '__main__':
     # for idx, k in enumerate(e**r_[-3:2:100j]):
 
     dt = 0.1
-    ds = 10
-    k = 4.2
-    tf = 10
-    N = 2**12
-    NFFT = 4096
+    ds = 1
+    k = 8
+    tf = 1*1000
+    N = 2**10
+    NFFT = 2**10
     ts = r_[0:tf:dt*ds]
     smoothn = 10
 
@@ -319,21 +310,20 @@ if __name__ == '__main__':
 
     run = sdde2()
 
-    plot = False
-    if plot:
+    doplot = True
+    if doplot:
         figure(figsize=(14, 14))
 
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    gpstep = gpustep(dim_b = -1)
+    gpstep = gpustep(dim_b = 0)
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
     print 'gpu integration with delays took ', run.toc
-    for key in ['rng', 'iset', 'step', 'get', 'hist']:
-        print '%s took %f s' % (key, sum(gpstep._tics[key]))
-    if plot:
+    print 'rng host -> device took %f s' % (sum(gpstep._rngtics), )
+    if doplot:
         subplot(544)
-        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        [plot(ts/1e3, y, 'k', alpha=0.01) for y in ys.T]
         grid(1)
         subplot(548)
         ys0 = ys - ys.mean(axis=0)
@@ -343,6 +333,7 @@ if __name__ == '__main__':
         subplot(5,4,12)
         es, ev = eig(cv)
         plot(es)
+        xlim([0, N/3])
         grid(1)
         subplot(5,4,16)
         pcas = dot(ev[:3, :], ys.T)
@@ -357,14 +348,15 @@ if __name__ == '__main__':
         #grid(1)
 
 
+    """
     # without significant delay
     tic = time.time()
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=0.1, k=k, ds=ds)
     print 'numpy integration without delays took ', run.toc
-    if plot:
+    if doplot:
         subplot(541)
-        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        [plot(ts/1e3, y, 'k', alpha=0.01) for y in ys.T]
         grid(1)
         subplot(545)
         ys0 = ys - ys.mean(axis=0)
@@ -374,6 +366,7 @@ if __name__ == '__main__':
         subplot(549)
         es, ev = eig(cv)
         plot(es)
+        xlim([0, N/3])
         grid(1)
         subplot(5,4,13)
         pcas = dot(ev[:3, :], ys.T)
@@ -390,9 +383,9 @@ if __name__ == '__main__':
     reset_rng()
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, ds=ds)
     print 'numpy integration with delays took ', run.toc
-    if plot:
+    if doplot:
         subplot(542)
-        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        [plot(ts/1e3, y, 'k', alpha=0.01) for y in ys.T]
         grid(1)
         subplot(546)
         ys0 = ys - ys.mean(axis=0)
@@ -402,6 +395,7 @@ if __name__ == '__main__':
         subplot(5,4, 10)
         es, ev = eig(cv)
         plot(es)
+        xlim([0, N/3])
         grid(1)
         subplot(5,4,14)
         pcas = dot(ev[:3, :], ys.T)
@@ -419,10 +413,10 @@ if __name__ == '__main__':
     tic = time.time()
     reset_rng()
     #ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step(), ds=ds)
-    #print 'C integration with delays took ', run.toc
-    if plot:
+    print 'C integration with delays took ', run.toc
+    if doplot:
         subplot(543)
-        [plot(ts/1e3, y, 'k', alpha=0.1) for y in ys.T]
+        [plot(ts/1e3, y, 'k', alpha=0.01) for y in ys.T]
         grid(1)
         subplot(547)
         ys0 = ys - ys.mean(axis=0)
@@ -432,6 +426,7 @@ if __name__ == '__main__':
         subplot(5,4,11)
         es, ev = eig(cv)
         plot(es)
+        xlim([0, N/3])
         grid(1)
         subplot(5,4,15)
         pcas = dot(ev[:3, :], ys.T)
@@ -444,9 +439,7 @@ if __name__ == '__main__':
         ylim([0, 100])
         #xlim([0, freq.max()])
         #grid(1)
-
-    # TODO change above sims to run w/ float32
-
+    """
     # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
 
     # delayed, GPU kernel, GPU noise (analyses should be similar)
@@ -457,7 +450,7 @@ if __name__ == '__main__':
 
     # etc.
 
-    #suptitle('k=%s' % (k,))
-    #savefig('compare.png')
-    #show()
-    #close()
+    if doplot:
+        savefig('compare.png')
+        show()
+        close()
