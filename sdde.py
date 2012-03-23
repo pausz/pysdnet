@@ -184,7 +184,7 @@ class gpustep(object):
             #     b. get_state
 
             # list for timing individual parts
-            self._tics = {key: [] for key in ['rng', 'iset', 'step', 'get', 'hist']}
+            self._tics = dict((key, []) for key in ['rng', 'iset', 'step', 'get', 'hist'])
 
             # finished prep, don't on subsequent calls
             self._first_call = False
@@ -309,8 +309,8 @@ if __name__ == '__main__':
     dt = 0.1
     ds = 10
     k = 4.2
-    tf = 100
-    N = 4096
+    tf = 10
+    N = 2**12
     NFFT = 4096
     ts = r_[0:tf:dt*ds]
     smoothn = 10
@@ -326,7 +326,7 @@ if __name__ == '__main__':
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    gpstep = gpustep(dim_b = 3)
+    gpstep = gpustep(dim_b = -1)
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
     print 'gpu integration with delays took ', run.toc
     for key in ['rng', 'iset', 'step', 'get', 'hist']:
@@ -460,4 +460,4 @@ if __name__ == '__main__':
     #suptitle('k=%s' % (k,))
     #savefig('compare.png')
     #show()
-    close()
+    #close()
