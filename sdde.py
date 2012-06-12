@@ -300,8 +300,8 @@ if __name__ == '__main__':
     dt = 0.1
     ds = 1
     k = 8
-    tf = 1*1000
-    N = 2**10
+    tf = 1*100
+    N = 2**12
     NFFT = 2**10
     ts = r_[0:tf:dt*ds]
     smoothn = 10
@@ -310,14 +310,14 @@ if __name__ == '__main__':
 
     run = sdde2()
 
-    doplot = True
+    doplot = False
     if doplot:
         figure(figsize=(14, 14))
 
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    gpstep = gpustep(dim_b = 0)
+    gpstep = gpustep(dim_b = 1)
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
     print 'gpu integration with delays took ', run.toc
     print 'rng host -> device took %f s' % (sum(gpstep._rngtics), )
@@ -408,11 +408,11 @@ if __name__ == '__main__':
         ylim([0, 100])
         #xlim([0, freq.max()])
         #grid(1)
-
+	"""
     # with delay, C integrator
     tic = time.time()
     reset_rng()
-    #ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step(), ds=ds)
+    ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=c_step(), ds=ds)
     print 'C integration with delays took ', run.toc
     if doplot:
         subplot(543)
@@ -439,7 +439,7 @@ if __name__ == '__main__':
         ylim([0, 100])
         #xlim([0, freq.max()])
         #grid(1)
-    """
+
     # delayed, GPU, numpy noise, looping kernel (exact num match, faster)
 
     # delayed, GPU kernel, GPU noise (analyses should be similar)
