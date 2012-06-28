@@ -1,4 +1,4 @@
-/* step.c
+/*
 
 implement the following python numpy-based method, assuming
 we'll be called by ctypes

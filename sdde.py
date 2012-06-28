@@ -300,8 +300,8 @@ if __name__ == '__main__':
     dt = 0.1
     ds = 1
     k = 8
-    tf = 1*100
-    N = 2**12
+    tf = 1*1000
+    N = 2**8
     NFFT = 2**10
     ts = r_[0:tf:dt*ds]
     smoothn = 10
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     # delayed, GPU kernel, numpy noise (exact numerical match)
     tic = time.time()
     reset_rng()
-    gpstep = gpustep(dim_b = 1)
+    gpstep = gpustep(dim_b = 0)
     ys = run(N, tf=tf, dt=dt, delayscale=50, k=k, step_fn=gpstep, ds=ds)
     print 'gpu integration with delays took ', run.toc
     print 'rng host -> device took %f s' % (sum(gpstep._rngtics), )
@@ -452,5 +452,5 @@ if __name__ == '__main__':
 
     if doplot:
         savefig('compare.png')
-        show()
+        show)
         close()
