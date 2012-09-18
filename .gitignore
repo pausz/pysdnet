@@ -2,3 +2,6 @@
 *.so
 *.npz
 *.swp
+data/dsi/*csv
+data/dsi/README.txt
+
