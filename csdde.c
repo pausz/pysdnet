@@ -55,8 +55,8 @@ int wrap(int i, int h) {
 }
 
 
-static void node_step(int j, int i, int horizon, int *nids, int *idelays, double dt,
-    double k, int N, double *x, double *G, double *hist, double *randn)
+static void node_step(int j, int i, int horizon, int *nids, int *idelays, float dt,
+    float k, int N, float *x, float *G, float *hist, float *randn)
     /*
     step individual node; this is most like what we will
     use as a kernel for cuda
@@ -76,30 +76,31 @@ static void node_step(int j, int i, int horizon, int *nids, int *idelays, double
     */
 {
 
-    double xj = hist[N*wrap(i - 1, horizon) + j];
+    float xj = hist[N*wrap(i - 1, horizon) + j];
 
-    double input = 0.0, Iij;
+    float input = 0.0, Iij;
 
     for (int idx=0; idx<N; idx++) {
         Iij = G[j*N + idx]*hist[N*(wrap((i - 1 - idelays[j*N + idx]), horizon)) + idx];
         input += Iij;
     }
 
-    double dxj = (xj - 5.0*pow(xj, 3.0))/5.0 + k*input/N;
+    float dxj = (xj - 5.0*pow(xj, 3.0))/5.0 + k*input/N;
 
     hist[N*wrap(i, horizon) + j] = xj + dt*(dxj + randn[j]/5.0);
 }
 
 
 
-void sdde_step(int i, int horizon, int *nids, int *idelays, double dt,
-    double k, int N, double *x, double *G, double *hist, double *randn)
+void sdde_step(int i, int horizon, int *nids, int *idelays, float dt,
+    float k, int N, float *x, float *G, float *hist, float *randn)
     /*
     step all the nodes
     */
 {
     int j;
 
+    
     for (j=0; j<N; j++) {
         node_step(j, i, horizon, nids, idelays, dt, k, N, x, G, hist, randn);
     }

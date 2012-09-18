@@ -98,6 +98,7 @@ except Exception as exc:
 
 from pylab import *
 import numpy.random
+from numpy import ascontiguousarray
 from numpy.ctypeslib import ndpointer
 
 reset_rng = lambda : numpy.random.seed(42)
@@ -118,7 +119,7 @@ class c_step(object):
         cfunc = ctypes.CDLL('./csdde.so').sdde_step
         cfunc.restype = ctypes.c_voidp
         cfunc.argtypes = [ctypes.c_int, ctypes.c_int, ndpcontig(), ndpcontig(),
-            ctypes.c_double, ctypes.c_double, ctypes.c_int, ndpcontig(), ndpcontig(),
+            ctypes.c_float, ctypes.c_float, ctypes.c_int, ndpcontig(), ndpcontig(),
             ndpcontig(), ndpcontig()]
     except:
         print 'no c step available'
@@ -266,7 +267,7 @@ class sdde2(object):
         x = randn(N).astype(float32)
         idelays = (delayscale*abs(randn(N, N))/dt).astype(int32)
         horizon = idelays.max()
-        hist = zeros((horizon + 1, N)).astype(float32)
+        hist = ascontiguousarray(zeros((horizon + 1, N)).astype(float32))
         nids = tile(arange(N), (N, 1))
         xout = zeros((int(tf/dt)/ds, N))
 
@@ -301,7 +302,7 @@ if __name__ == '__main__':
     ds = 1
     k = 8
     tf = 1*1000
-    N = 2**8
+    N = 2**10
     NFFT = 2**10
     ts = r_[0:tf:dt*ds]
     smoothn = 10
@@ -452,5 +453,5 @@ if __name__ == '__main__':
 
     if doplot:
         savefig('compare.png')
-        show)
+        show()
         close()
