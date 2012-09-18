@@ -26,4 +26,21 @@ def orinfo(n):
         occupancy - %f
     """ % (orec.tb_per_mp, orec.warps_per_mp, orec.limited_by, orec.occupancy)
 
+from kernels import srcmod
 
+class arrays_on_gpu(object):
+
+    def __init__(self, **arrays):
+
+        self.__array_names = arrays.keys()
+    
+        for key, val in arrays.iteritems():
+            setattr(self, key, gary.to_gpu(val))
+
+    def __enter__(self, *args):
+        return self
+
+    def __exit__(self, *args):
+
+        for key in self.__array_names:
+            delattr(self, key)
