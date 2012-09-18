@@ -6,6 +6,11 @@ from cuda import *
 
 """
 prototype 32x32 par space exploration
+=====================================
+
+- optimize axes' order for memory access
+- optimize block/grid layouts
+
 """
 
 ### setup data and parameters
@@ -18,7 +23,7 @@ ds = 10
 ts = np.r_[0:tf:dt]
 
 vel =  2.0
-gsc = ( -100, -100, 32j)
+gsc = ( 0, 30, 32j)
 exc = (-10, 10, 32j)
 
 idel = (np.random.uniform(low=3, high=160/vel, size=(n, n))/dt).astype(np.int32)
@@ -26,6 +31,8 @@ hist = np.zeros((idel.max()+1, n, 1, 1024), dtype=np.float32)
 conn = np.random.normal(scale=0.1, size=(n, n)).astype(np.float32)
 X    = np.random.uniform(low=-0.1, high=0.1, size=(n, 1, 1024)).astype(np.float32)
 Xs   = np.empty((len(ts)/ds, n, 1, 1024), dtype=np.float32)
+
+print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, [idel, hist, conn, X]))/2**20, )
 
 # setup cuda kernel
 with open('./parsweep.cu') as fd:
@@ -76,7 +83,8 @@ tk /= len(ts)
 tu /= len(ts)
 tx /= len(ts)
 
-# save data
+# save data with parameter grids
+gsc, exc = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]]
 np.savez('sim-data', ts, Xs)
 
 print '%f ms / iteration' % (1000*(tk+tu+tx), )
