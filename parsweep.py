@@ -3,35 +3,42 @@ from time import time
 import string
 import numpy as np
 from cuda import *
+import data.dsi
 
 """
 prototype 32x32 par space exploration
 =====================================
 
+optimization
+------------
+
 - optimize axes' order for memory access
 - optimize block/grid layouts
+
+three-d full sweep
+------------------
+
+- vel = 2**r_[1:6:32j]
 
 """
 
 ### setup data and parameters
 
-def main(save_data=False):
+def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 30, 32j), exc=(-10, 10, 32j)):
 
-    n = 96
+    dataset = data.dsi.load_dataset(dataset_id)
+
+    n = dataset.weights.shape[0]
 
     tf = 100
     dt = 0.05
     ds = 10
     ts = np.r_[0:tf:dt]
 
-    vel =  2.0
-    gsc = ( 0, 30, 32j)
-    exc = (-10, 10, 32j)
-
-    idel = (np.random.uniform(low=3, high=160/vel, size=(n, n))/dt).astype(np.int32)
+    idel = (dataset.distances/vel/dt).astype(np.int32)
     hist = np.zeros((idel.max()+1, n, 1, 1024), dtype=np.float32)
-    conn = np.random.normal(scale=0.1, size=(n, n)).astype(np.float32)
-    X    = np.random.uniform(low=-0.1, high=0.1, size=(n, 1, 1024)).astype(np.float32)
+    conn = dataset.weights.astype(np.float32)
+    X    = np.random.uniform(low=-1, high=1, size=(n, 1, 1024)).astype(np.float32)
     Xs   = np.empty((len(ts)/ds, n, 1, 1024), dtype=np.float32)
 
     print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, [idel, hist, conn, X]))/2**20, )
@@ -64,9 +71,16 @@ def main(save_data=False):
     # save data with parameter grids
     gsc, exc = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]]
     if save_data:
-        np.savez('sim-data', ts, Xs, np.array([vel]), gsc, exc)
+        if not type(save_data) in (str, unicode):
+            save_data = 'sim-data'
+        np.savez('%s-%s-%0.2f-%d' % (save_data, dataset_id, vel, file_id), 
+                 ts=ts, Xs=Xs, vel=np.array([vel]), gsc=gsc, exc=exc)
 
     print '%f ms / iteration' % (1000*toc, )
 
 if __name__ == '__main__':
-    main(save_data=True)
+
+    for i, v in enumerate(2**np.r_[1:6:32j]):
+        for j in range(100):
+            print i, j
+            main(save_data='bistable/sim', vel=v, file_id=j)
