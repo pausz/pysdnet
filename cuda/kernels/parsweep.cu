@@ -1,4 +1,16 @@
-/* CUDA kernel template for parameter sweeping */
+/* CUDA kernel template for parameter sweeping 
+
+    - striding requires attention! may be good to template that as well, so that
+        Python level code just specs axes by semantic labels rather than manually
+        speccing strides to generate linear indices.
+
+    - adding a model with more than one state variable will require rewriting the
+        index expressions to insert n_state_vars 
+
+    - use templating to avoid function pointers for efficient use of various 
+        models
+
+*/
 
 inline __device__ int wrap(int i) {
 
@@ -11,6 +23,12 @@ inline __device__ int wrap(int i) {
             return $horizon + (i % $horizon);
 
 }
+
+/* models we use */
+__device__ void pitchfork();
+__device__ void hopf();
+__device__ void kuramoto();
+// etc
 
 __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
 {
@@ -35,12 +53,17 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
         for (int j=0; j<$n; j++) {
             conn_ij = conn[j*$n + i];
             idel_ij = idel[j*$n + i];
-            hist_idx = n_thr*$n*wrap(step - 1 - idel_ij) + i + 0 + par_ij;
+            hist_idx = n_thr*$n*wrap(step - 1 - idel_ij) + n_thr*i + 0 + par_ij;
             input += conn_ij*hist[hist_idx];
         }
 
-         x = hist[n_thr*$n*wrap(step - 1) + i + 0 + par_ij];
-        dx = (x - x*x*x/3.0)/20.0 + gsc*input + exc;
+        input *= gsc/$n;
+
+         x = hist[n_thr*$n*wrap(step - 1) + n_thr*i + 0 + par_ij];
+
+        // <model specific code>
+        dx = (x - x*x*x/3.0)/20.0 + input + exc;
+        // </model specific code>
 
         X[n_thr*i + 0 + par_ij] = x + $dt*dx;
     }
@@ -53,6 +76,6 @@ __global__ void update(int step, float *hist, float *X)
       ;
 
     for (int i=0; i<$n; i++)
-        hist[n_thr*$n*wrap(step) + i + 0 + par_ij] = X[n_thr*i + 0 + par_ij];
+        hist[n_thr*$n*wrap(step) + n_thr*i + 0 + par_ij] = X[n_thr*i + 0 + par_ij];
 }
 
