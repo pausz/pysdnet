@@ -1,14 +1,12 @@
 /* CUDA kernel template for parameter sweeping 
 
-    - striding requires attention! may be good to template that as well, so that
-        Python level code just specs axes by semantic labels rather than manually
-        speccing strides to generate linear indices.
+    - striding requires attention!
 
-    - adding a model with more than one state variable will require rewriting the
-        index expressions to insert n_state_vars 
+    - hist contains only one state variable, cvar, while X contains all of them
+        between the node and parsweep dims
 
-    - use templating to avoid function pointers for efficient use of various 
-        models
+    - the mapping between launch configuration and parameter space grid should be
+        done more systematically 
 
 */
 
@@ -24,12 +22,6 @@ inline __device__ int wrap(int i) {
 
 }
 
-/* models we use */
-__device__ void pitchfork();
-__device__ void hopf();
-__device__ void kuramoto();
-// etc
-
 __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
 {
 
@@ -39,10 +31,10 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
       , par_j  = threadIdx.x
       , par_ij = blockDim.x*par_i + par_j
       , n_thr  = blockDim.x*gridDim.x
-      , idel_ij, hist_idx
+      , hist_idx
       ;
 
-    float x, dx, input, conn_ij
+    float x, dx, input
       , gsc = $gsc0 + par_i*$dgsc
       , exc = $exc0 + par_j*$dexc
       ;
@@ -50,16 +42,17 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
     for (int i=0; i<$n; i++)
     {
         input = 0.0;
+
         for (int j=0; j<$n; j++) {
-            conn_ij = conn[j*$n + i];
-            idel_ij = idel[j*$n + i];
-            hist_idx = n_thr*$n*wrap(step - 1 - idel_ij) + n_thr*i + 0 + par_ij;
-            input += conn_ij*hist[hist_idx];
+            hist_idx = $n*n_thr*wrap(step - 1 - idel[j*$n + i])  // step
+                     +    n_thr*i                                // node index 
+                     +        1*par_ij;                          // parsweep index
+            input += conn[j*$n + i]*hist[hist_idx];
         }
 
         input *= gsc/$n;
 
-         x = hist[n_thr*$n*wrap(step - 1) + n_thr*i + 0 + par_ij];
+        x = X[n_thr*nsv*i + n_thr*0 + par_ij]
 
         // <model specific code>
         dx = (x - x*x*x/3.0)/20.0 + input + exc;
@@ -69,6 +62,7 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
     }
 }
 
+// update history
 __global__ void update(int step, float *hist, float *X)
 {
     int par_ij = threadIdx.x
@@ -76,6 +70,6 @@ __global__ void update(int step, float *hist, float *X)
       ;
 
     for (int i=0; i<$n; i++)
-        hist[n_thr*$n*wrap(step) + n_thr*i + 0 + par_ij] = X[n_thr*i + 0 + par_ij];
+        hist[n_thr*$n*wrap(step) + n_thr*i + par_ij] = X[nsv*n_thr*i + n_thr*$cvar*0 + par_ij];
 }
 

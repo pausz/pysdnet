@@ -44,3 +44,5 @@ class arrays_on_gpu(object):
 
         for key in self.__array_names:
             delattr(self, key)
+
+   

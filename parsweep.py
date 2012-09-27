@@ -59,7 +59,7 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
 
     # setup cuda kernel
     mod = srcmod('parsweep.cu', ['kernel', 'update'],
-                 horizon=idel.max()+1, dt=dt, ds=ds, n=n,
+                 horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=0,
                  gsc0=gsc[0], dgsc=(gsc[1]-gsc[0])/gsc[2].imag,
                  exc0=exc[0], dexc=(exc[1]-exc[0])/exc[2].imag)
 

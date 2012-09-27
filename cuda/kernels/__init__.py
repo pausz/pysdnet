@@ -1,4 +1,14 @@
 
+"""
+We could have even more fun with this, jbwc, monkey patching the import
+system to allow, e.g.
+
+    >>> import pysdnet.cuda.kernels as ks
+    >>> from ks.parsweep import kernel as parsweep
+    >>> parsweep(*args, **launch_conf)
+
+"""
+
 import os
 import string
 
@@ -17,4 +27,5 @@ class srcmod(object):
 
         for f in fns:
             setattr(self, f, self._module.get_function(f))
+
 
