@@ -54,21 +54,18 @@ defmodel(fhn_euler, X, pars, nt, pi, in)
 __global__ void kernel(int step, int * __restrict__ idel, 
                        float * __restrict__ hist, 
                        float * __restrict__ conn, 
-                       float * __restrict__ X
+                       float * __restrict__ X,
+                       float * __restrict__ gsc,
+                       float * __restrict__ exc
                        )
 {
 
-    int par_i  = blockIdx.x
-      , par_j  = threadIdx.x
-      , par_ij = blockDim.x*par_i + par_j
+    int par_ij = blockDim.x*blockIdx.x + threadIdx.x
       , n_thr  = blockDim.x*gridDim.x
       , hist_idx
       ;
 
-    float input
-      , gsc = $gsc0 + par_i*$dgsc
-      , exc = $exc0 + par_j*$dexc
-      ;
+    float input;
 
     for (int i=0; i<$n; i++)
     {
@@ -78,26 +75,24 @@ __global__ void kernel(int step, int * __restrict__ idel,
 
                     //   stride*index
             hist_idx = $n*n_thr*wrap(step - 1 - *idel)  // step
-                     +    n_thr*i                       // node index 
+                     +    n_thr*j                       // node index 
                      +        1*par_ij;                 // parsweep index
 
             input += (*conn)*hist[hist_idx];
         }
 
-        input *= gsc/$n;
-
-        $model(X + n_thr*$nsv*i, &exc, n_thr, par_ij, input);
+        $model(X + n_thr*$nsv*i, exc+par_ij, n_thr, par_ij, gsc[par_ij]*input/$n);
     }
 }
 
 // update history
-__global__ void update(int step, float *hist, float *X)
+__global__ void update(int step, float * __restrict__ hist, float * __restrict__ X)
 {
-    int par_ij = threadIdx.x
-      , n_thr  = blockDim.x
+    int par_ij = blockDim.x*blockIdx.x + threadIdx.x
+      , n_thr  = blockDim.x*gridDim.x
       ;
 
     for (int i=0; i<$n; i++)
-        hist[n_thr*$n*wrap(step) + n_thr*i + par_ij] = X[$nsv*n_thr*i + n_thr*$cvar*0 + par_ij];
+        hist[n_thr*$n*wrap(step) + n_thr*i + par_ij] = X[$nsv*n_thr*i + n_thr*$cvar + par_ij];
 }
 

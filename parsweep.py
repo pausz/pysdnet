@@ -38,7 +38,8 @@ to create an catalog of whole-brain dynamics
 ### setup data and parameters
 
 def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j), exc=(-5, 5, 32j), meminfo=True,
-         tf=200, dt=0.1, ds=10, model="bistable_euler", nsv=1, cvar=0, srcdebug=False):
+         tf=200, dt=0.1, ds=10, model="bistable_euler", nsv=1, cvar=0, srcdebug=False,
+         kernel_block=256, kernel_grid=4, update_block=1024, update_grid=1):
 
     dataset = data.dsi.load_dataset(dataset_id)
 
@@ -50,6 +51,7 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
     conn = dataset.weights.astype(np.float32)
     X    = np.random.uniform(low=-1, high=1, size=(n, nsv, 1024)).astype(np.float32)
     Xs   = np.empty((1+len(ts)/ds, n, nsv, 1024), dtype=np.float32)
+    gsc, exc  = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]].astype(np.float32)
 
     # make sure first step is in otherwise zero'd history
     hist[-1, ...] = X[:, cvar, :]
@@ -60,11 +62,9 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
     # setup cuda kernel
     mod = srcmod('parsweep.cu', ['kernel', 'update'],
                  horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar,
-                 model=model, nsv=nsv, _debug=srcdebug,
-                 gsc0=gsc[0], dgsc=(gsc[1]-gsc[0])/gsc[2].imag,
-                 exc0=exc[0], dexc=(exc[1]-exc[0])/exc[2].imag)
+                 model=model, nsv=nsv, _debug=srcdebug)
 
-    with arrays_on_gpu(idel=idel, hist=hist, conn=conn, X=X) as g:
+    with arrays_on_gpu(idel=idel, hist=hist, conn=conn, X=X, exc=exc, gsc=gsc) as g:
 
         Xs[0, ...] = g.X.get()
 
@@ -73,8 +73,10 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
             
             tic = time()
 
-            mod.kernel(np.int32(step), g.idel, g.hist, g.conn, g.X, block=(32, 1, 1), grid=(32, 1))
-            mod.update(np.int32(step), g.hist, g.X, block=(1024, 1, 1), grid=(1, 1))
+            mod.kernel(np.int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, 
+                       block=(kernel_block, 1, 1), grid=(kernel_grid, 1))
+            mod.update(np.int32(step), g.hist, g.X,
+                       block=(update_block, 1, 1), grid=(update_grid, 1))
 
             if step%ds == 0:
                 Xs[1+step/ds, ...] = g.X.get()
@@ -85,7 +87,6 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
     toc /= len(ts)
 
     # save data with parameter grids
-    gsc, exc = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]]
     if save_data:
         if not type(save_data) in (str, unicode):
             save_data = 'sim-data'
@@ -102,5 +103,11 @@ if __name__ == '__main__':
         for j in range(100):
             print i, j
     """
+
+    import sys
     i, j, v = 0, 0, 2.0
-    main(save_data='debug3', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2)
+    main(save_data='debug3', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2,
+         kernel_block=int(sys.argv[1]),
+         kernel_grid= int(sys.argv[2]),
+         update_block=int(sys.argv[3]),
+         update_grid =int(sys.argv[4]))
