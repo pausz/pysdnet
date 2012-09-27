@@ -38,7 +38,7 @@ to create an catalog of whole-brain dynamics
 ### setup data and parameters
 
 def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j), exc=(-5, 5, 32j), meminfo=True,
-         tf=200, dt=0.1, ds=10):
+         tf=200, dt=0.1, ds=10, model="bistable_euler", nsv=1, cvar=0, srcdebug=False):
 
     dataset = data.dsi.load_dataset(dataset_id)
 
@@ -46,20 +46,21 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
     ts = np.r_[0:tf:dt]
 
     idel = (dataset.distances/vel/dt).astype(np.int32)
-    hist = np.zeros((idel.max()+1, n, 1, 1024), dtype=np.float32)
+    hist = np.zeros((idel.max()+1, n, 1024), dtype=np.float32)
     conn = dataset.weights.astype(np.float32)
-    X    = np.random.uniform(low=-1, high=1, size=(n, 1, 1024)).astype(np.float32)
-    Xs   = np.empty((1+len(ts)/ds, n, 1, 1024), dtype=np.float32)
+    X    = np.random.uniform(low=-1, high=1, size=(n, nsv, 1024)).astype(np.float32)
+    Xs   = np.empty((1+len(ts)/ds, n, nsv, 1024), dtype=np.float32)
 
     # make sure first step is in otherwise zero'd history
-    hist[-1, ...] = X
+    hist[-1, ...] = X[:, cvar, :]
 
     if meminfo:
-        print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, [idel, hist, conn, X]))/2**20, )
+        print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, [idel, hist, conn, X]))/2.0**20, )
 
     # setup cuda kernel
     mod = srcmod('parsweep.cu', ['kernel', 'update'],
-                 horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=0,
+                 horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar,
+                 model=model, nsv=nsv, _debug=srcdebug,
                  gsc0=gsc[0], dgsc=(gsc[1]-gsc[0])/gsc[2].imag,
                  exc0=exc[0], dexc=(exc[1]-exc[0])/exc[2].imag)
 
@@ -96,7 +97,10 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
 
 if __name__ == '__main__':
 
+    """
     for i, v in enumerate(2**np.r_[1:6:32j]):
         for j in range(100):
             print i, j
-            main(save_data='bistable/sim', vel=v, file_id=j, meminfo=False)
+    """
+    i, j, v = 0, 0, 2.0
+    main(save_data='debug', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2)

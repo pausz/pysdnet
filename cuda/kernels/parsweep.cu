@@ -22,10 +22,41 @@ inline __device__ int wrap(int i) {
 
 }
 
-__global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
-{
+// begin defining models
+#define defmodel(name, X, pars, n_thr, par_ij, input) inline __device__ void name\
+    (float * __restrict__ X, void * __restrict__ pars, int n_thr, int par_ij, float input)
 
-    /* hist[step, node, var, paridx], X[node, var, paridx] */
+defmodel(bistable_euler, Y, p, nt, pi, i)
+{
+    float x   = Y[nt*0 + pi]
+       ,  exc = *((float*) p)
+       ,  dx  = (x - x*x*x/3.0)/20.0 + i + exc;
+
+    Y[nt*0 + pi] = x + $dt*dx;
+}
+
+defmodel(fhn_euler, X, pars, nt, pi, in)
+{
+    float x = X[nt*0 + pi]
+        , y = X[nt*1 + pi]
+        , a = *((float*) pars)
+
+        , dx = (x - x*x*x/3.0 + y)*3.0
+        , dy = (a - x + in)/3.0;
+
+    X[nt*0 + pi] = x + $dt*dx;
+    X[nt*1 + pi] = y + $dt*dy;
+}
+
+#undef defmodel
+// end model definitions
+
+__global__ void kernel(int step, int * __restrict__ idel, 
+                       float * __restrict__ hist, 
+                       float * __restrict__ conn, 
+                       float * __restrict__ X
+                       )
+{
 
     int par_i  = blockIdx.x
       , par_j  = threadIdx.x
@@ -34,7 +65,7 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
       , hist_idx
       ;
 
-    float x, dx, input
+    float input
       , gsc = $gsc0 + par_i*$dgsc
       , exc = $exc0 + par_j*$dexc
       ;
@@ -44,21 +75,18 @@ __global__ void kernel(int step, int *idel, float *hist, float *conn, float *X)
         input = 0.0;
 
         for (int j=0; j<$n; j++) {
+
+                    //   stride*index
             hist_idx = $n*n_thr*wrap(step - 1 - idel[j*$n + i])  // step
                      +    n_thr*i                                // node index 
                      +        1*par_ij;                          // parsweep index
+
             input += conn[j*$n + i]*hist[hist_idx];
         }
 
         input *= gsc/$n;
 
-        x = X[n_thr*nsv*i + n_thr*0 + par_ij]
-
-        // <model specific code>
-        dx = (x - x*x*x/3.0)/20.0 + input + exc;
-        // </model specific code>
-
-        X[n_thr*i + 0 + par_ij] = x + $dt*dx;
+        $model(X + n_thr*$nsv*i, &exc, n_thr, par_ij, input);
     }
 }
 
@@ -70,6 +98,6 @@ __global__ void update(int step, float *hist, float *X)
       ;
 
     for (int i=0; i<$n; i++)
-        hist[n_thr*$n*wrap(step) + n_thr*i + par_ij] = X[nsv*n_thr*i + n_thr*$cvar*0 + par_ij];
+        hist[n_thr*$n*wrap(step) + n_thr*i + par_ij] = X[$nsv*n_thr*i + n_thr*$cvar*0 + par_ij];
 }
 
