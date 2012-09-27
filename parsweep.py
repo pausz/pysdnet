@@ -103,4 +103,4 @@ if __name__ == '__main__':
             print i, j
     """
     i, j, v = 0, 0, 2.0
-    main(save_data='debug', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2)
+    main(save_data='debug3', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2)

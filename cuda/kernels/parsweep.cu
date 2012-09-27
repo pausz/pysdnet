@@ -74,14 +74,14 @@ __global__ void kernel(int step, int * __restrict__ idel,
     {
         input = 0.0;
 
-        for (int j=0; j<$n; j++) {
+        for (int j=0; j<$n; j++, idel++, conn++) {
 
                     //   stride*index
-            hist_idx = $n*n_thr*wrap(step - 1 - idel[j*$n + i])  // step
-                     +    n_thr*i                                // node index 
-                     +        1*par_ij;                          // parsweep index
+            hist_idx = $n*n_thr*wrap(step - 1 - *idel)  // step
+                     +    n_thr*i                       // node index 
+                     +        1*par_ij;                 // parsweep index
 
-            input += conn[j*$n + i]*hist[hist_idx];
+            input += (*conn)*hist[hist_idx];
         }
 
         input *= gsc/$n;
