@@ -41,8 +41,8 @@ defmodel(fhn_euler, X, pars, nt, pi, in)
         , y = X[nt*1 + pi]
         , a = *((float*) pars)
 
-        , dx = (x - x*x*x/3.0 + y)*3.0
-        , dy = (a - x + in)/3.0;
+        , dx = (x - x*x*x/3.0 + y)*3.0/20.0
+        , dy = (a - x)/3.0/20.0 + in;
 
     X[nt*0 + pi] = x + $dt*dx;
     X[nt*1 + pi] = y + $dt*dy;

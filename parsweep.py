@@ -37,20 +37,21 @@ to create an catalog of whole-brain dynamics
 
 ### setup data and parameters
 
-def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j), exc=(-5, 5, 32j), meminfo=True,
+def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 256j), exc=(-5, 5, 256j), meminfo=True,
          tf=200, dt=0.1, ds=10, model="bistable_euler", nsv=1, cvar=0, srcdebug=False,
          kernel_block=256, kernel_grid=4, update_block=1024, update_grid=1):
 
     dataset = data.dsi.load_dataset(dataset_id)
 
     n = dataset.weights.shape[0]
+    nthr = gsc[2].imag*exc[2].imag
     ts = np.r_[0:tf:dt]
 
     idel = (dataset.distances/vel/dt).astype(np.int32)
-    hist = np.zeros((idel.max()+1, n, 1024), dtype=np.float32)
+    hist = np.zeros((idel.max()+1, n, nthr), dtype=np.float32)
     conn = dataset.weights.astype(np.float32)
-    X    = np.random.uniform(low=-1, high=1, size=(n, nsv, 1024)).astype(np.float32)
-    Xs   = np.empty((1+len(ts)/ds, n, nsv, 1024), dtype=np.float32)
+    X    = np.random.uniform(low=-1, high=1, size=(n, nsv, nthr)).astype(np.float32)
+    Xs   = np.empty((1+len(ts)/ds, n, nsv, nthr), dtype=np.float32)
     gsc, exc  = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]].astype(np.float32)
 
     # make sure first step is in otherwise zero'd history
@@ -90,8 +91,12 @@ def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 32j),
     if save_data:
         if not type(save_data) in (str, unicode):
             save_data = 'sim-data'
+        """
         np.savez('%s-%s-%0.2f-%d' % (save_data, dataset_id, vel, file_id), 
                  ts=ts, Xs=Xs, vel=np.array([vel]), gsc=gsc, exc=exc)
+        """
+        print 'saving %d MB' % (Xs.nbytes/1024/1024,)
+        np.save('%s-%s-%0.1f-%d' % (save_data, dataset_id, vel, file_id), Xs)
 
     print '%f ms / iteration' % (1000*toc, )
     return Xs
@@ -105,8 +110,8 @@ if __name__ == '__main__':
     """
 
     import sys
-    i, j, v = 0, 0, 2.0
-    main(save_data='debug3', vel=v, file_id=j, meminfo=True, model="bistable_euler", nsv=2,
+    i, j, v = 0, 0, 40.0
+    main(save_data='bigmofo', vel=v, file_id=j, meminfo=True, model="fhn_euler", nsv=2,
          kernel_block=int(sys.argv[1]),
          kernel_grid= int(sys.argv[2]),
          update_block=int(sys.argv[3]),
