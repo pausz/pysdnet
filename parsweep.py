@@ -1,118 +1,83 @@
-
-from time import time
-import string
-import numpy as np
+import string, time, sys, data.dsi, multiprocessing
+from pylab import *
+from numpy import *
 from cuda import *
-import data.dsi
 
-"""
-prototype 32x32 par space exploration
-=====================================
+random.seed(42)
 
-optimization
-------------
+dataset = data.dsi.load_dataset('ay')
+n       = dataset.weights.shape[0]
+nic     = 64 
+npar    = 64
+nthr    = npar*nic
+tf      = 1500
+dt      = 0.1
+ds      = 80
+vel     = 4.0
+model   = "fhn_euler"
+nsv     = 2
+cvar    = 0
 
-- optimize axes' order for memory access
-- optimize block/grid layouts
+mem_est = int(dataset.distances.max()/vel/dt)*nthr*nsv*n*4/2.**30
+print "GPU mem use O(%0.3f GB)" % mem_est
 
-three-d full sweep
-------------------
+ts      = r_[0:tf:dt]
+idel    = (dataset.distances/vel/dt).astype(int32)
+hist    = random.uniform(low=-1., high=1., size=(idel.max()+1, n, nthr))
+conn    = dataset.weights
+X       = random.uniform(low=-2, high=2, size=(n, nsv, nthr))
+Xs      = empty((1+len(ts)/ds, n, nsv, nthr), dtype=float32)
+gsc     = -(logspace(-3.523, -0.745, npar)[:, newaxis])*ones((npar, nic)).astype(float32)
+exc     = 1.01*ones((npar, nic)).astype(float32)
 
-- vel = 2**r_[1:6:32j]
+hist[-1, ...] = X[:, cvar, :]
 
-eventually
-----------
+print 'will do %d iterations' % (len(ts),)
+ars = [idel, hist, conn, X, gsc, exc]
+print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, ars))/2.0**20, )
+print 'plus additional %0.1f MB on CPU' % (Xs.nbytes/2.0**20,)
 
-systematic sweep over
+mod = srcmod('parsweep.cu', ['kernel', 'update'],
+             horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar, model=model, nsv=nsv)
 
-- conduction velocity (1 m/s to 100 m/s)
-- coupling scaling (0 to 1 (normalized)
-- bifurcation parameter (per model type, generalized idea of excitability)
-- bifurcation type (pitchfork, hopf, etc)
-- connectivity skeleton
+with arrays_on_gpu(_timed="integration",
+                   idel=idel.astype(int32), 
+                   hist=hist.astype(float32), conn=conn.astype(float32), 
+                   X=X.astype(float32), exc=exc.astype(float32), gsc=gsc.astype(float32)) as g:
 
-to create an catalog of whole-brain dynamics
+    Xs[0, ...] = g.X.get()
 
-"""
+    for step, t in enumerate(ts):
+        
+        mod.kernel(int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, 
+                   block=(64, 1, 1), grid=(64, 1))
+        mod.update(int32(step), g.hist, g.X,
+                   block=(1024, 1, 1), grid=(4, 1))
 
-### setup data and parameters
+        if step%ds == 0:
+            Xs[1+step/ds, ...] = g.X.get()
 
-def main(save_data=False, dataset_id='ay', vel=2.0, file_id=0, gsc=( 0, 3, 256j), exc=(-5, 5, 256j), meminfo=True,
-         tf=200, dt=0.1, ds=10, model="bistable_euler", nsv=1, cvar=0, srcdebug=False,
-         kernel_block=256, kernel_grid=4, update_block=1024, update_grid=1):
+tic = time.time()
+Xs -= Xs.mean(axis=0)
+Xs = rollaxis(Xs, 3)
 
-    dataset = data.dsi.load_dataset(dataset_id)
-
-    n = dataset.weights.shape[0]
-    nthr = gsc[2].imag*exc[2].imag
-    ts = np.r_[0:tf:dt]
-
-    idel = (dataset.distances/vel/dt).astype(np.int32)
-    hist = np.zeros((idel.max()+1, n, nthr), dtype=np.float32)
-    conn = dataset.weights.astype(np.float32)
-    X    = np.random.uniform(low=-1, high=1, size=(n, nsv, nthr)).astype(np.float32)
-    Xs   = np.empty((1+len(ts)/ds, n, nsv, nthr), dtype=np.float32)
-    gsc, exc  = np.mgrid[gsc[0]:gsc[1]:gsc[2], exc[0]:exc[1]:exc[2]].astype(np.float32)
-
-    # make sure first step is in otherwise zero'd history
-    hist[-1, ...] = X[:, cvar, :]
-
-    if meminfo:
-        print 'using %0.1f MB on GPU' % (sum(map(lambda a: a.nbytes, [idel, hist, conn, X]))/2.0**20, )
-
-    # setup cuda kernel
-    mod = srcmod('parsweep.cu', ['kernel', 'update'],
-                 horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar,
-                 model=model, nsv=nsv, _debug=srcdebug)
-
-    with arrays_on_gpu(idel=idel, hist=hist, conn=conn, X=X, exc=exc, gsc=gsc) as g:
-
-        Xs[0, ...] = g.X.get()
-
-        toc = 0.0
-        for step, t in enumerate(ts):
-            
-            tic = time()
-
-            mod.kernel(np.int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, 
-                       block=(kernel_block, 1, 1), grid=(kernel_grid, 1))
-            mod.update(np.int32(step), g.hist, g.X,
-                       block=(update_block, 1, 1), grid=(update_grid, 1))
-
-            if step%ds == 0:
-                Xs[1+step/ds, ...] = g.X.get()
-
-            toc += time() - tic
-
-    # normalize timing
-    toc /= len(ts)
-
-    # save data with parameter grids
-    if save_data:
-        if not type(save_data) in (str, unicode):
-            save_data = 'sim-data'
+def one_fig(arg):
+    i, Xsi = arg
+    u, s, vt = svd( Xsi.reshape((-1, nsv*96)), full_matrices=0 )
+    figure(figsize=(16, 8))
+    for j, X in enumerate(Xsi):
         """
-        np.savez('%s-%s-%0.2f-%d' % (save_data, dataset_id, vel, file_id), 
-                 ts=ts, Xs=Xs, vel=np.array([vel]), gsc=gsc, exc=exc)
+        subplot(121)
+        xs = (s[:7]*dot(vt[:7], X.reshape((-1, nsv*96)).T).T/s[0]).T
+        plot(xs[0], xs[1], 'k', alpha=0.1)
+        subplot(122)
         """
-        print 'saving %d MB' % (Xs.nbytes/1024/1024,)
-        np.save('%s-%s-%0.1f-%d' % (save_data, dataset_id, vel, file_id), Xs)
+        for x, c in zip(xs, 'kbgrcmy'):
+            plot(ts[::ds], x[1:], c, alpha=0.1)
+    title('vel=%0.1f, gsc=%0.4f, exc=%0.2f' % (vel, gsc[i,0], exc[i, 0]))
+    savefig('iter%03d.png' % i)
 
-    print '%f ms / iteration' % (1000*toc, )
-    return Xs
-
-if __name__ == '__main__':
-
-    """
-    for i, v in enumerate(2**np.r_[1:6:32j]):
-        for j in range(100):
-            print i, j
-    """
-
-    import sys
-    i, j, v = 0, 0, 40.0
-    main(save_data='bigmofo', vel=v, file_id=j, meminfo=True, model="fhn_euler", nsv=2,
-         kernel_block=int(sys.argv[1]),
-         kernel_grid= int(sys.argv[2]),
-         update_block=int(sys.argv[3]),
-         update_grid =int(sys.argv[4]))
+pool = multiprocessing.Pool(10)
+pool.map(one_fig, enumerate(Xs.reshape((npar, nic, Xs.shape[1], n, nsv))))
+    
+print 'postproc & plotting %0.3f s' % (time.time() - tic,)

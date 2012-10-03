@@ -1,10 +1,12 @@
 # common helpers to boot up pycuda
 
+import time
+
 try:
     import pyublas
 except ImportError as exc:
-    print "pyublas module not found; some C++ <-> Python data converters"
-    print "will be unavaible, possibly causing data type exceptions"
+    global __pyublas__available__
+    __pyublas__available__ = False
 
 try:
     import pycuda.autoinit
@@ -30,17 +32,25 @@ from kernels import srcmod
 
 class arrays_on_gpu(object):
 
-    def __init__(self, **arrays):
+    def __init__(self, _timed=False, **arrays):
 
         self.__array_names = arrays.keys()
     
         for key, val in arrays.iteritems():
             setattr(self, key, gary.to_gpu(val))
 
+        if type(_timed) in (str, unicode):
+            self._timed_msg = _timed
+        else:
+            self._timed_msg = "gpu timer"
+
     def __enter__(self, *args):
+        self.tic = time.time()
         return self
 
     def __exit__(self, *args):
+
+        print "%s %0.3f s" % (self._timed_msg, time.time() - self.tic)
 
         for key in self.__array_names:
             delattr(self, key)
