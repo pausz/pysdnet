@@ -7,7 +7,7 @@ random.seed(42)
 
 dataset = data.dsi.load_dataset('ay')
 n       = dataset.weights.shape[0]
-nic     = 1024
+nic     = 64
 npar    = 64
 nthr    = npar*nic
 tf      = 1500
@@ -18,7 +18,6 @@ model   = "fhn_euler"
 nsv     = 2
 cvar    = 0
 
-#          first order estimate of GPU memory use     * magic < available
 assert int(dataset.distances.max()/vel/dt)*nthr*nsv*n*4 * 1.1 < pycuda.autoinit.device.total_memory()
 
 ts      = r_[0:tf:dt]
@@ -77,9 +76,12 @@ variations = enumerate(Xs.reshape((npar, nic, Xs.shape[1], n, nsv)))
 
 res = [pool.apply_async(svd, (Xsi[:, -(len(ts)/ds/2):].reshape((-1, nsv*96)),), {'full_matrices':0}) for i, Xsi in variations]
 svds = [r.get() for r in res]
+pool.close()
+pool.join()
 
+pool = multiprocessing.Pool(10)
 res = [pool.apply_async(one_fig, (i, Xsi, svds[i][1], svds[i][2])) for i, Xsi in variations]
-
+[r.get() for r in res]
 pool.close()
 pool.join()
 
