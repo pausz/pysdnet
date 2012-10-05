@@ -19,8 +19,9 @@ nic     = 5
 nsv     = 2
 dt      = 0.1
 
-def gpu(*args):
-    print map(lambda x: x.shape, args)
+def gpu(G, E):
+    assert G.size % 256 == 0 
+    return randn(G.size)
 
 for i, v in enumerate(vel):
 
@@ -35,7 +36,7 @@ for i, v in enumerate(vel):
     # implicit loop for n initial conditions per parameter set
     G_, E_ = repeat(G.flat, nic)[:], repeat(E.flat, nic)[:]
 
-    nthrn = nic*G_.size 
+    nthrn = G_.size 
     nlaunch = 1 + nthrn/nthr
     print '%dth velocity %0.1f, %d launches, nthr %d' % (i, v, nlaunch, nthr)
 
@@ -45,10 +46,6 @@ for i, v in enumerate(vel):
         Xss = [gpu(G_, E_)]
     else:
         for l in range(nlaunch-1):
-            # this is bug! assuming nic strided in gpu, but here indexing G, E without replicating
-            # them for nic correctly!! soln to pull out and loop nic here? no that makes ugliness
-            # we can just create an implicit loop by replicating G, E in place as soon as they are
-            # generated ...
             Xss.append(gpu(G_[  l   *nthr :(l+1)*nthr ], E_[  l   *nthr :(l+1)*nthr ]))
 
         if nthrn - (nic*G.size)/nthr*nthr > 0:
