@@ -7,7 +7,6 @@ model_nsvs = dict(fhn_euler=2, bistable_euler=1)
 def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
         kblock=128, ublock=1024, cat=concatenate):
     from cuda import srcmod, arrays_on_gpu # do not place in top of module!
-
     ts      = r_[0:tf:dt]
     n       = dataset.weights.shape[0]
     nsv     = model_nsvs[model]
@@ -19,14 +18,10 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
     conn    = dataset.weights
     X       = random.uniform(low=-2, high=2, size=(n, nsv, nthr))
     Xs      = empty((1+len(ts)/ds, n, nsv, nthr), dtype=float32)
-
-    mem = sum(map(lambda a: a.size*4, [idel, hist, conn, X, gsc, exc]))/2.0**20
-    print '%d iterations, %0.1f MB GPU, %0.1f addnl CPU' % (len(ts), mem, Xs.nbytes/2.**20)
-
     mod = srcmod('parsweep.cu', ['kernel', 'update'], 
                  horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar, model=model, nsv=nsv)
     hist[-1, ...] = X[:, cvar, :]
-    with arrays_on_gpu(_timed="integration", idel=idel.astype(int32), 
+    with arrays_on_gpu(idel=idel.astype(int32), 
                        hist=hist.astype(float32), conn=conn.astype(float32), 
                        X=X.astype(float32), exc=cat((exc, zeros((npad,)))).astype(float32), 
                        gsc=cat((gsc, zeros((npad,)))).astype(float32)) as g:
@@ -39,13 +34,15 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
     return rollaxis(Xs, 3)[:-npad]
 
 def launches(datasets, models, vel, G, E, nic, dt, blockDim_x=256, gridDim_x=256):
-    for dataset, model, v in itertools.product(datasets, models, vel):
+    nlaunch = len(datasets)*len(models)*len(vel)
+    for i, cfg in enumerate(itertools.product(datasets, models, vel)):
+        print 'launch %d of %d' % (i, nlaunch)
+        dataset, model, v = cfg
         nsv       = model_nsvs[model]
         nthr      = util.estnthr(dataset.distances, v, dt, nsv)
         gridDim_x = nthr/blockDim_x if nthr/blockDim_x < gridDim_x else gridDim_x
         nthr      = blockDim_x*gridDim_x
         G_, E_    = map(lambda a: repeat(a.flat, nic), meshgrid(gsc, exc))
-
         if G_.size <= nthr:
             yield_ = G_, E_
         else:
@@ -76,6 +73,7 @@ if __name__ == '__main__':
     i             = 0
     worker        = multiprocessing.Pool(1)
 
+    # producer, buffer, consumer (ish)
     for d, m, v, g, e in launches(datasets, models, vel, gsc, exc, nic, dt):
         buffer.append(worker.apply(gpu, (g, e, v, dt, d), dict(tf=tf, model=m)))
         if sum([len(x) for x in buffer]) == len(gsc)*len(exc)*nic:
