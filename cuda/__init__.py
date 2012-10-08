@@ -32,9 +32,17 @@ from kernels import srcmod
 
 class arrays_on_gpu(object):
 
-    def __init__(self, _timed="gpu timer", **arrays):
+    def __init__(self, _timed="gpu timer", _memdebug=False, **arrays):
 
         self.__array_names = arrays.keys()
+
+        if _memdebug:
+            memuse = sum([v.size*v.itemsize for k, v in arrays.iteritems()])/2.**20
+            memavl = pycuda.autoinit.device.total_memory()/2.**20
+            print 'GPU mem use %0.2f MB of %0.2f avail.' % (memuse, memavl)
+            for k, v in arrays.iteritems():
+                print 'gpu array %s.shape = %r' % (k, v.shape)
+            assert memuse <= memavl
     
         for key, val in arrays.iteritems():
             setattr(self, key, gary.to_gpu(val))
