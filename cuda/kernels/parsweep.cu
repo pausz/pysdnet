@@ -30,7 +30,7 @@ defmodel(bistable_euler, Y, p, nt, pi, i)
 {
     float x   = Y[nt*0 + pi]
        ,  exc = *((float*) p)
-       ,  dx  = (x - x*x*x/3.0)/20.0 + i + exc;
+       ,  dx  = (x - x*x*x/3.0)/5.0 + i + exc;
 
     Y[nt*0 + pi] = x + $dt*dx;
 }
@@ -41,8 +41,8 @@ defmodel(fhn_euler, X, pars, nt, pi, in)
         , y = X[nt*1 + pi]
         , a = *((float*) pars)
 
-        , dx = (x - x*x*x/3.0 + y)*3.0/20.0
-        , dy = (a - x)/3.0/20.0 + in;
+        , dx = (x - x*x*x/3.0 + y)*3.0/5.0
+        , dy = (a - x)/3.0/5.0 + in;
 
     X[nt*0 + pi] = x + $dt*dx;
     X[nt*1 + pi] = y + $dt*dy;

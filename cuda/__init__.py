@@ -32,17 +32,14 @@ from kernels import srcmod
 
 class arrays_on_gpu(object):
 
-    def __init__(self, _timed=False, **arrays):
+    def __init__(self, _timed="gpu timer", **arrays):
 
         self.__array_names = arrays.keys()
     
         for key, val in arrays.iteritems():
             setattr(self, key, gary.to_gpu(val))
 
-        if type(_timed) in (str, unicode):
-            self._timed_msg = _timed
-        else:
-            self._timed_msg = "gpu timer"
+        self._timed_msg = _timed
 
     def __enter__(self, *args):
         self.tic = time.time()
@@ -50,7 +47,8 @@ class arrays_on_gpu(object):
 
     def __exit__(self, *args):
 
-        print "%s %0.3f s" % (self._timed_msg, time.time() - self.tic)
+        if self._timed_msg:
+            print "%s %0.3f s" % (self._timed_msg, time.time() - self.tic)
 
         for key in self.__array_names:
             delattr(self, key)

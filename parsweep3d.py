@@ -21,7 +21,7 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
     mod = srcmod('parsweep.cu', ['kernel', 'update'], 
                  horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar, model=model, nsv=nsv)
     hist[-1, ...] = X[:, cvar, :]
-    with arrays_on_gpu(idel=idel.astype(int32), 
+    with arrays_on_gpu(_timed=False, idel=idel.astype(int32), 
                        hist=hist.astype(float32), conn=conn.astype(float32), 
                        X=X.astype(float32), exc=cat((exc, zeros((npad,)))).astype(float32), 
                        gsc=cat((gsc, zeros((npad,)))).astype(float32)) as g:
@@ -31,54 +31,59 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
             mod.update(int32(step), g.hist, g.X, block=(ublock, 1, 1), grid=(nthr/ublock, 1))
             if step%ds == 0 and not (1+step/ds)>=len(Xs):
                 Xs[1+step/ds, ...] = g.X.get().copy()
-    return rollaxis(Xs, 3)[:-npad]
+    return (lambda X: X[:-npad] if npad else X)(rollaxis(Xs, 3))
 
-def launches(datasets, models, vel, G, E, nic, dt, blockDim_x=256, gridDim_x=256):
-    nlaunch = len(datasets)*len(models)*len(vel)
+def launches(datasets, models, vel, gsc, exc, nic, dt, blockDim_x=256, gridDim_x=256):
     for i, cfg in enumerate(itertools.product(datasets, models, vel)):
-        print 'launch %d of %d' % (i, nlaunch)
         dataset, model, v = cfg
-        nsv       = model_nsvs[model]
-        nthr      = util.estnthr(dataset.distances, v, dt, nsv)
-        gridDim_x = nthr/blockDim_x if nthr/blockDim_x < gridDim_x else gridDim_x
+        nthr_     = util.estnthr(dataset.distances, v, dt, model_nsvs[model])
+        gridDim_x = nthr_/blockDim_x if nthr_/blockDim_x < gridDim_x else gridDim_x
         nthr      = blockDim_x*gridDim_x
         G_, E_    = map(lambda a: repeat(a.flat, nic), meshgrid(gsc, exc))
+        print 'vel %0.2f, %d threads need, blocks of %d possible, %d used' % (v, G_.size, nthr_, nthr)
         if G_.size <= nthr:
-            yield_ = G_, E_
+            yield dataset, model, v, G_, E_
         else:
             for l in range(G_.size/nthr-1):
-                yield_ = G_[  l   *nthr :(l+1)*nthr ], E_[  l   *nthr :(l+1)*nthr ]
+                yield dataset, model, v, G_[  l   *nthr :(l+1)*nthr ], E_[  l   *nthr :(l+1)*nthr ]
             if G_.size - G_.size/nthr*nthr > 0:
-                yield_ = G_[ (l+1)*nthr :           ], E_[ (l+1)*nthr :           ]
-        yield (dataset, model, v) + yield_
+                yield dataset, model, v, G_[ (l+1)*nthr :           ], E_[ (l+1)*nthr :           ]
 
 def reducer(Xs, npar, nic):
-    for X in Xs[:, -Xs.shape[1]/2:].reshape((npar, nic*Xs.shape[1]/2, -1)).copy():
+    for X in Xs[:, -Xs.shape[1]/2:].reshape((npar, Xs.shape[1]/2*nic, -1)).copy():
         try:
-            yield (lambda s: cumsum(s**2/sum(s**2))[3])(svd(X, full_matrices)[1])
+            yield (lambda s: cumsum(s**2/sum(s**2))[3])(svd(X, full_matrices=0)[1])
         except LinAlgError:
             yield 1.0
 
 if __name__ == '__main__':
     random.seed(42)
-    ngrid         = 16
-    vel, gsc, exc = logspace(0, 2, 128), logspace(-4, -1.5, ngrid), r_[0.75:1.25:ngrid*1j]
-    datasets      = [data.dsi.load_dataset('ay')]
+    ngrid         = 32
+    vel, gsc, exc = logspace(0, 2, ngrid), logspace(-5., -1.5, ngrid), r_[0.75:1.25:ngrid*1j]
+    datasets      = map(data.dsi.load_dataset, ['ay'])
     models        = ['fhn_euler']
     nic           = 32
     dt            = 0.5
     tf            = 500
-    results       = empty(map(len, [datasets, models, vel, gsc, exc]))
+    results       = zeros(map(len, [datasets, models, vel, gsc, exc]))
     buffer        = []
     i             = 0
-    worker        = multiprocessing.Pool(1)
+    j             = 0
 
     # producer, buffer, consumer (ish)
     for d, m, v, g, e in launches(datasets, models, vel, gsc, exc, nic, dt):
-        buffer.append(worker.apply(gpu, (g, e, v, dt, d), dict(tf=tf, model=m)))
+        print j, 'th launch with', v, g.shape
+        #buffer.append(worker.apply(gpu, (g, e, v, dt, d), dict(tf=tf, model=m)))
+        result = gpu(g, e, v, dt, d, tf=tf, model=m)
+        print 'result.shape = ', result.shape
+        buffer.append(result)
+        j += 1
         if sum([len(x) for x in buffer]) == len(gsc)*len(exc)*nic:
-            for r in reducer(temp, len(gsc)*len(exc), nic):
+            for r in reducer(concatenate(buffer), len(gsc)*len(exc), nic):
                 results.flat[i] = r
+                if i%(results.size/100) == 0:
+                    print time.time(), int(i/(results.size/100.0))
                 i += 1
+            buffer = []
 
     save('results.npy', results)
