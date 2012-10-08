@@ -36,7 +36,7 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
 def launches(datasets, models, vel, gsc, exc, nic, dt, blockDim_x=256, gridDim_x=256):
     for i, cfg in enumerate(itertools.product(datasets, models, vel)):
         dataset, model, v = cfg
-        nthr_     = util.estnthr(dataset.distances, v, dt, model_nsvs[model])
+        nthr_     = util.estnthr(dataset.distances, v, dt, model_nsvs[model], dispo=5300*2**20)
         gridDim_x = nthr_/blockDim_x if nthr_/blockDim_x < gridDim_x else gridDim_x
         nthr      = blockDim_x*gridDim_x
         G_, E_    = map(lambda a: repeat(a.flat, nic), meshgrid(gsc, exc))
@@ -59,11 +59,11 @@ def reducer(Xs, npar, nic):
 
 if __name__ == '__main__':
     random.seed(42)
-    ngrid         = 16
+    ngrid         = 64
     vel, gsc, exc = logspace(-1, 2, ngrid), logspace(-5., -1.5, ngrid), r_[0.75:1.25:ngrid*1j]
     datasets      = map(data.dsi.load_dataset, ['ay'])
     models        = ['fhn_euler']
-    nic           = 32
+    nic           = 64
     dt            = 0.5
     tf            = 300
     ds            = 30
@@ -72,6 +72,8 @@ if __name__ == '__main__':
     i             = 0
     j             = 0
     start_time    = time.time()
+
+    print 'starting sweep of %d simulations' % (nic*ngrid**3,)
 
     # producer, buffer, consumer (ish)
     for d, m, v, g, e in launches(datasets, models, vel, gsc, exc, nic, dt):
