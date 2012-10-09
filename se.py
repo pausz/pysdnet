@@ -1,13 +1,14 @@
 import numpy
 
-def se(y, m=3, r=0.1, qse=True, taus=1,
+def se(y, m=3, r=None, qse=True, taus=1,
        tile=numpy.tile, na=numpy.newaxis, abs=numpy.abs, 
        log=numpy.log, r_=numpy.r_):
     """
     Computes (quadratic) sample entropy of a given input signal y, with
     embedding dimension n, and a match tolerance of r (ref 2). If an array
     of scale factors, taus, are given, the signal will be coarsened by each
-    factor and a corresponding entropy will be computed (ref 1).
+    factor and a corresponding entropy will be computed (ref 1). If no value
+    for r is given, it will be set to 0.15*y.std().
 
     Currently, the implementation is lazy and expects or coerces scale factors
     to integer values.
@@ -37,6 +38,10 @@ def se(y, m=3, r=0.1, qse=True, taus=1,
 
     # helper function to reformat arrays for matching
     subseq = lambda y, n: y[tile(r_[0:n], (y.size-n+1, 1)) + r_[0:y.size-n+1][:, na]]
+
+    # default value of r
+    if r is None:
+        r = 0.15*y.std()
 
     # if we have a scale factor, coarsen time series 
     if taus > 1:
