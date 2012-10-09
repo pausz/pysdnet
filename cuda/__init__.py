@@ -10,6 +10,7 @@ except ImportError as exc:
 
 try:
     import pycuda.autoinit
+    import pycuda.driver
     import pycuda.gpuarray as gary
     from pycuda.compiler import SourceModule
     from pycuda.tools import DeviceData, OccupancyRecord
@@ -17,6 +18,9 @@ try:
 except Exception as exc:
     print "importing pycuda modules failed with exception", exc
     print "please check PATH and LD_LIBRARY_PATH variables"
+    import os
+    print os.environ
+    print
 
 
 def orinfo(n):

@@ -7,6 +7,7 @@ model_nsvs = dict(fhn_euler=2, bistable_euler=1)
 def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
         kblock=128, ublock=1024, cat=concatenate):
     from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+    import pycuda.driver
     ts      = r_[0:tf:dt]
     n       = dataset.weights.shape[0]
     nsv     = model_nsvs[model]
@@ -21,14 +22,16 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
     mod = srcmod('parsweep.cu', ['kernel', 'update'], 
                  horizon=idel.max()+1, dt=dt, ds=ds, n=n, cvar=cvar, model=model, nsv=nsv)
     hist[-1, ...] = X[:, cvar, :]
-    with arrays_on_gpu(_timed=False, idel=idel.astype(int32), 
+    with arrays_on_gpu(_timed=False, _memdebug=True, idel=idel.astype(int32), 
                        hist=hist.astype(float32), conn=conn.astype(float32), 
                        X=X.astype(float32), exc=cat((exc, zeros((npad,)))).astype(float32), 
                        gsc=cat((gsc, zeros((npad,)))).astype(float32)) as g:
         Xs[0, ...] = g.X.get()
         for step, t in enumerate(ts):
             mod.kernel(int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, block=(kblock, 1, 1), grid=(nthr/kblock, 1))
+            pycuda.driver.Context.synchronize()
             mod.update(int32(step), g.hist, g.X, block=(ublock, 1, 1), grid=(nthr/ublock if nthr/ublock > 0 else 1, 1))
+            pycuda.driver.Context.synchronize()
             if step%ds == 0 and not (1+step/ds)>=len(Xs):
                 Xs[1+step/ds, ...] = g.X.get()
     return (lambda X: X[:-npad] if npad else X)(rollaxis(Xs, 3))
@@ -59,14 +62,14 @@ def reducer(Xs, npar, nic):
 
 if __name__ == '__main__':
     random.seed(42)
-    ngrid         = 64
+    ngrid         = 32
     vel, gsc, exc = logspace(-1, 2, ngrid), logspace(-5., -1.5, ngrid), r_[0.75:1.25:ngrid*1j]
-    datasets      = map(data.dsi.load_dataset, ['ay'])
-    models        = ['fhn_euler']
-    nic           = 64
+    datasets      = map(data.dsi.load_dataset, range(5))
+    models        = ['fhn_euler', 'bistable_euler']
+    nic           = 32
     dt            = 0.5
-    tf            = 300
-    ds            = 30
+    tf            = 1000
+    ds            = 50
     results       = zeros(map(len, [datasets, models, vel, gsc, exc]))
     buffer        = []
     i             = 0
