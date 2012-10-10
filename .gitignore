@@ -6,3 +6,4 @@ data/dsi/*csv
 data/dsi/README.txt
 
 *.png
+launch*.npy
