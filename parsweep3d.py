@@ -28,17 +28,25 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
                        gsc=cat((gsc, zeros((npad,)))).astype(float32)) as g:
         Xs[0, ...] = g.X.get()
         for step, t in enumerate(ts):
-            mod.kernel(int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, block=(kblock, 1, 1), grid=(nthr/kblock, 1))
-            pycuda.driver.Context.synchronize()
-            mod.update(int32(step), g.hist, g.X, block=(ublock, 1, 1), grid=(nthr/ublock if nthr/ublock > 0 else 1, 1))
-            pycuda.driver.Context.synchronize()
+            try:
+                mod.kernel(int32(step), g.idel, g.hist, g.conn, g.X, g.gsc, g.exc, block=(kblock, 1, 1), grid=(nthr/kblock, 1))
+                pycuda.driver.Context.synchronize()
+            except Exception as E:
+                raise Exception('mod.kernel failed', step, t, nthr, npad, kblock, nthr/kblock)
+
+            try:
+                mod.update(int32(step), g.hist, g.X, block=(ublock if nthr>=ublock else nthr, 1, 1), 
+                           grid=(nthr/ublock if nthr/ublock > 0 else 1, 1))
+                pycuda.driver.Context.synchronize()
+            except Exception as E:
+                raise Exception('mod.update failed', step, t, nthr, npad, ublock if nthr>=ublock else nthr, nthr/ublock if nthr/ublock>0 else 1)
             if step%ds == 0 and not (1+step/ds)>=len(Xs):
                 Xs[1+step/ds, ...] = g.X.get()
     return (lambda X: X[:-npad] if npad else X)(rollaxis(Xs, 3))
 
 def launches(datasets, models, vel, gsc, exc, nic, dt, blockDim_x=256, gridDim_x_full=256, _just_counting=False):
     for i, cfg in enumerate(itertools.product(datasets, models, vel)):
-        dataset, model, v = cfg
+        dataset, model, v = cfg                                             # increase this since x0.7 anyway
         nthr_     = util.estnthr(dataset.distances, v, dt, model_nsvs[model], dispo=5300*2**20)
         gridDim_x = nthr_/blockDim_x if nthr_/blockDim_x < gridDim_x_full else gridDim_x_full
         nthr      = blockDim_x*gridDim_x
@@ -46,9 +54,8 @@ def launches(datasets, models, vel, gsc, exc, nic, dt, blockDim_x=256, gridDim_x
         nlaunch = G_.size/nthr + (0 if G_.size%nthr + nthr > nthr_ else -1)
 
         if _just_counting:
-            yield
+            yield # BUG! needed to put this down below inside for loops
         else:
-            import pdb; pdb.set_trace()
             print 'vel %0.2f, %d threads to run, blocks of %d possible, %d used in %d launches' % (v, G_.size, nthr_, nthr, nlaunch)
             if G_.size <= nthr:
                 yield dataset, model, v, G_, E_
@@ -57,6 +64,10 @@ def launches(datasets, models, vel, gsc, exc, nic, dt, blockDim_x=256, gridDim_x
                     yield dataset, model, v, G_[  l   *nthr :(l+1)*nthr ], E_[  l   *nthr :(l+1)*nthr ]
                 if G_.size - G_.size/nthr*nthr > 0:
                     yield dataset, model, v, G_[ (l+1)*nthr :           ], E_[ (l+1)*nthr :           ]
+
+# I need to start pulling the pieces apart here from the launch generator
+# to the gpu workers to the reduction / output. we want this to be restartable
+# as well as having access to the launch set later during analyses...
 
 def reducer(Xs, npar, nic):
     for X in Xs[:, -(Xs.shape[1]/2):].reshape((npar, Xs.shape[1]/2*nic, -1)).copy():
@@ -68,23 +79,25 @@ def reducer(Xs, npar, nic):
 if __name__ == '__main__':
 
     random.seed(42)
-    ngrid         = 16
-    vel, gsc, exc = logspace(-1, 2, 32), logspace(-5., -1.5, ngrid), r_[0.95:1.1:ngrid*1j]
-    datasets      = map(data.dsi.load_dataset, range(5))
+    ngrid         = 32
+    vel, gsc, exc = logspace(-1, 2, ngrid), logspace(-5., -1.5, ngrid), r_[0.95:1.1:ngrid*1j]
+    datasets      = map(data.dsi.load_dataset, range(9))
     models        = ['fhn_euler']
-    nic           = 16
+    nic           = 32
     dt            = 0.5
-    tf            = 50
-    ds            = 1
+    tf            = 500
+    ds            = 10
     j             = 0
     start_time    = time.time()
     launch_count  = 0
 
+    # this will be completely unreliable if we're restarting
     print 'counting launches needed...'
     ls = launches(datasets, models, vel, gsc, exc, nic, dt, _just_counting=True)
     for l in ls:
         launch_count += 1
     print 'launch count at ', launch_count
+    sys.stdout.flush()
 
     for d, m, v, g, e in launches(datasets, models, vel, gsc, exc, nic, dt):
         with open('./status.txt', 'w') as fd:
@@ -105,3 +118,4 @@ if __name__ == '__main__':
             except Exception as E:
                 print 'launch', j, v, 'borked with ', E
         j += 1
+        sys.stdout.flush()
