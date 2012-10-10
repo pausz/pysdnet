@@ -1,6 +1,6 @@
 import numpy
 
-def se(y, m=3, r=None, qse=True, taus=1,
+def se(y, m=3, r=None, qse=True, taus=1, info=False,
        tile=numpy.tile, na=numpy.newaxis, abs=numpy.abs, 
        log=numpy.log, r_=numpy.r_):
     """
@@ -65,9 +65,10 @@ def se(y, m=3, r=None, qse=True, taus=1,
         print "m+1 template match count is low, %d < 5" % c2
 
     p = c2*1.0/c1
+    e = -log( p/(2*r) if qse else p )
 
-    if qse:
-        return -log(p/(2*r))
+    if info:
+        return e, p, c2, c1
     else:
-        return -log(p)
+        return e
 
