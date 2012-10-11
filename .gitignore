@@ -7,3 +7,4 @@ data/dsi/README.txt
 
 *.png
 launch*.npy
+*.pickle
