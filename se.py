@@ -1,6 +1,6 @@
 import numpy
 
-def se(y, m=3, r=None, qse=True, taus=1, info=False,
+def se(y, m=2, r=None, qse=False, taus=1, info=False,
        tile=numpy.tile, na=numpy.newaxis, abs=numpy.abs, 
        log=numpy.log, r_=numpy.r_):
     """
