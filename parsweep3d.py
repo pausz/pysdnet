@@ -78,15 +78,20 @@ def reducer(Xs, npar, nic):
 
 if __name__ == '__main__':
 
+    """
+    This seems to be a good pattern, working with a run & launch configuration, so
+    put this together more formally into a couple of classes, especially to encode
+    how to do the online compression via PCA. 1
+    """
     random.seed(42)
-    ngrid         = 32
-    vel, gsc, exc = logspace(-1, 2, ngrid), logspace(-5., -1.5, ngrid), r_[0.95:1.1:ngrid*1j]
-    datasets      = map(data.dsi.load_dataset, range(9))
+    ngrid         = 64
+    vel, gsc, exc = logspace(-0.3, 2, ngrid), logspace(-6., -0.5, ngrid), r_[0.8:1.2:ngrid*1j]
+    datasets      = map(data.dsi.load_dataset, [0])
     models        = ['fhn_euler']
     nic           = 32
     dt            = 0.5
-    tf            = 500
-    ds            = 10
+    tf            = 1000
+    ds            = 5
     j             = 0
     start_time    = time.time()
     launch_count  = 0
@@ -100,13 +105,13 @@ if __name__ == '__main__':
     sys.stdout.flush()
 
     for d, m, v, g, e in launches(datasets, models, vel, gsc, exc, nic, dt):
-        with open('./status.txt', 'w') as fd:
+        with open('./status3.txt', 'w') as fd:
             elapsed = time.time() - start_time
             fd.write('%0.2f since start, %dth launch with vel %0.2f, nthr %r, %0.2f s remaining\n'
                         % (elapsed, j, v, g.shape, elapsed/(j+1.) * (launch_count - j)))
             fd.flush()
 
-        savename = 'launch-%06d.npy' % (j,)
+        savename = 'run3/launch-%06d.npy' % (j,)
         try:
             os.stat(savename)
             print 'found this launch, skipping...'
