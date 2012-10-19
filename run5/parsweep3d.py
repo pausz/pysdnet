@@ -8,7 +8,7 @@ from numpy import *
 model_nsvs = dict(fhn_euler=2, bistable_euler=1)
 
 def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
-        kblock=128, ublock=1024, cat=concatenate):
+        kblock=128, ublock=1024, cat=concatenate, record_after=0.0):
     ts      = r_[0:tf:dt]
     n       = dataset.weights.shape[0]
     nsv     = model_nsvs[model]
@@ -41,7 +41,7 @@ def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
                 pycuda.driver.Context.synchronize()
             except Exception as E:
                 raise Exception('mod.update failed', step, t, nthr, npad, ublock if nthr>=ublock else nthr, nthr/ublock if nthr/ublock>0 else 1)
-            if step%ds == 0 and not (1+step/ds)>=len(Xs):
+            if t>record_after and step%ds == 0 and not (1+step/ds)>=len(Xs):
                 Xs[1+step/ds, ...] = g.X.get()
     return (lambda X: X[:-npad] if npad else X)(rollaxis(Xs, 3))
 
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     random.seed(42)
     ngrid         = 4
     vel, gsc, exc = logspace(0.0, 1.5, ngrid), logspace(-6., -1., ngrid), r_[0.95:1.01:ngrid*1j]
-    datasets      = map(data.dsi.load_dataset, [0, 1])
+    datasets      = map(data.dsi.load_dataset, [0])
     models        = ['fhn_euler']
     nic           = 16384
     dt            = 0.5
