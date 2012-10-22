@@ -1,0 +1,1 @@
+219.07 since start, 18th launch with vel 31.62, nthr (65536,), -207.54 s remaining

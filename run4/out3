@@ -1,0 +1,29 @@
+None
+importing pycuda modules failed with exception cuInit failed: no device
+please check PATH and LD_LIBRARY_PATH variables
+{'OAR_ARRAY_ID': '1399252', 'OAR_ARRAY_INDEX': '1', 'OARDIR': 'TT/usr/lib/oar', 'OARDO_UID': '106', 'OARXAUTHLOCATION': 'TT/usr/bin/xauth', 'OAR_NODE_FILE': '/var/lib/oar/1399252', 'OAR_JOB_ID': '1399252', 'SHELL': '/bin/bash', 'LOGNAME': 'duke', 'USER': 'duke', 'OAR_RESOURCE_FILE': '/var/lib/oar/1399252', 'HOME': '/home/duke', 'LD_LIBRARY_PATH': '/usr/local/cuda/lib64:/usr/local/cuda/lib:/usr/lib/atlas-base', 'OAR_RESOURCE_PROPERTIES_FILE': '/var/lib/oar/1399252_resources', 'OAR_STDOUT': 'out3', 'OAR_FILE_NODES': '/var/lib/oar/1399252', 'OAR_ARRAYID': '1399252', 'OAR_PROJECT_NAME': 'default', 'OAR_NODEFILE': '/var/lib/oar/1399252', 'OAR_O_WORKDIR': '/home/duke/pysdnet/run4', 'OAR_CPUSET': '/oar/duke_1399252', 'OAR_USER': 'duke', 'OAR_ARRAYINDEX': '1', 'OARUSER': 'TToar', 'OARCONFFILE': 'TT/etc/oar/oar.conf', 'OAR_STDERR': 'err3', 'SUDO_COMMAND': 'OAR', 'PYTHONPATH': '/home/duke/pycuda/build/lib.linux-x86_64-2.7/:', 'TERM': 'unknown', 'PATH': '/home/duke/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin', 'OAR_JOB_WALLTIME': '144:0:0', 'OARDO_USER': 'oar', 'OAR_JOB_WALLTIME_SECONDS': '518400', 'BASH_ENV': '/home/duke/.bashrc', '_': './.temp-oar-job.sh', 'PERL5LIB': 'TT/usr/lib/oar', 'OAR_WORKING_DIRECTORY': '/home/duke/pysdnet/run4', 'OAR_WORKDIR': '/home/duke/pysdnet/run4', 'OAR_KEY': '1', 'SHLVL': '1', 'PWD': '/home/duke/pysdnet/run4', 'OAR_JOB_NAME': '', 'OAR_JOBID': '1399252', 'SSH_CONNECTION': '192.168.150.254 47688 192.168.150.17 6667'}
+
+vel 1.00, 262144 threads to run, blocks of 29109 possible, 28928 used in 9 launches
+launch 0 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 1 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 2 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 3 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 4 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 5 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 6 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 7 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 8 1.0 borked with  cuCtxGetDevice failed: not initialized
+launch 9 1.0 borked with  cuCtxGetDevice failed: not initialized
+vel 1.03, 262144 threads to run, blocks of 29970 possible, 29952 used in 8 launches
+launch 10 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 11 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 12 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 13 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 14 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 15 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 16 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 17 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+launch 18 1.0275690704 borked with  cuCtxGetDevice failed: not initialized
+vel 1.06, 262144 threads to run, blocks of 30790 possible, 30720 used in 8 launches
+launch 19 1.05589819443 borked with  cuCtxGetDevice failed: not initialized
+launch 20 1.05589819443 borked with  cuCtxGetDevice failed: not initialized

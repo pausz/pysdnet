@@ -1,0 +1,1 @@
+14.16 since start, 153th launch with vel 100.00, nthr (32768,), -2.30 s remaining

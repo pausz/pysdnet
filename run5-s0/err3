@@ -1,0 +1,16 @@
+  File "parsweep3d.py", line 127
+    cfg = {'weights': d.weights, 'distances', d.distances, 
+                                            ^
+SyntaxError: invalid syntax
+Command exited with non-zero status 1
+0.01user 0.00system 0:00.04elapsed 44%CPU (0avgtext+0avgdata 4604maxresident)k
+16inputs+8outputs (0major+1364minor)pagefaults 0swaps
+Traceback (most recent call last):
+  File "parsweep3d.py", line 3, in <module>
+    from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+ImportError: No module named cuda
+Command exited with non-zero status 1
+0.09user 0.02system 0:00.23elapsed 48%CPU (0avgtext+0avgdata 13680maxresident)k
+24inputs+24outputs (1major+4362minor)pagefaults 0swaps
+190.71user 29.94system 3:42.66elapsed 99%CPU (0avgtext+0avgdata 7676944maxresident)k
+55576inputs+240outputs (87major+23341282minor)pagefaults 0swaps

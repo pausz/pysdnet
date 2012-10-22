@@ -1,0 +1,35 @@
+  File "parsweep3d.py", line 118
+    cfg = {'weights': d.weights, 'distances', d.distances, 
+                                            ^
+SyntaxError: invalid syntax
+Command exited with non-zero status 1
+0.01user 0.02system 0:00.18elapsed 20%CPU (0avgtext+0avgdata 4600maxresident)k
+4712inputs+8outputs (5major+1357minor)pagefaults 0swaps
+Traceback (most recent call last):
+  File "parsweep3d.py", line 3, in <module>
+    from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+ImportError: No module named cuda
+Command exited with non-zero status 1
+0.07user 0.11system 0:01.05elapsed 17%CPU (0avgtext+0avgdata 13612maxresident)k
+25824inputs+16outputs (43major+4302minor)pagefaults 0swaps
+Traceback (most recent call last):
+  File "parsweep3d.py", line 3, in <module>
+    from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+ImportError: No module named cuda
+Command exited with non-zero status 1
+0.06user 0.05system 0:00.27elapsed 43%CPU (0avgtext+0avgdata 13616maxresident)k
+0inputs+16outputs (1major+4345minor)pagefaults 0swaps
+Traceback (most recent call last):
+  File "parsweep3d.py", line 3, in <module>
+    from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+ImportError: No module named cuda
+Command exited with non-zero status 1
+0.07user 0.02system 0:00.13elapsed 70%CPU (0avgtext+0avgdata 13612maxresident)k
+0inputs+16outputs (1major+4344minor)pagefaults 0swaps
+Traceback (most recent call last):
+  File "parsweep3d.py", line 3, in <module>
+    from cuda import srcmod, arrays_on_gpu # do not place in top of module!
+ImportError: No module named cuda
+Command exited with non-zero status 1
+0.06user 0.06system 0:00.28elapsed 44%CPU (0avgtext+0avgdata 13612maxresident)k
+0inputs+16outputs (1major+4344minor)pagefaults 0swaps
