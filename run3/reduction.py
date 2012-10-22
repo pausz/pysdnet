@@ -37,7 +37,8 @@ def reducer(i, _fail=[np.array([])]*3):
 if __name__ == '__main__':
 
     idx = int(sys.argv[1]) if len(sys.argv)>1 else 0
-    ncores = int(sys.argv[2]) if len(sys.argv)>2 else 1
+    ncores = int(sys.argv[2]) if len(sys.argv)>2 else 8
+    ncores = 8
 
     savename = 'launch-%06d.npy' % (idx,)
     outname = 'reduced-%06d.pickle' % (idx,)

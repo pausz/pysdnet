@@ -6,6 +6,16 @@ from numpy import *
 
 model_nsvs = dict(fhn_euler=2, bistable_euler=1)
 
+def cpu(gsc, exc, vel, dt, dataset, tf, ds, model, cvar=0):
+    mod = getattr(cee, model)
+    pool = multiprocessing.Pool()
+    def mapped(ge):
+        g, e = ge
+        sims.append(mod.sim(g, e, vel, dt, dataset, tf, ds))
+    sims = concatenate(pool.map(mapped, zip(gsc, exc)), axis=4)
+    return rollaxis(sims, 3)
+
+
 def gpu(gsc, exc, vel, dt, dataset, tf=1500, ds=80, model="fhn_euler", cvar=0,
         kblock=128, ublock=1024, cat=concatenate):
     ts      = r_[0:tf:dt]

@@ -13,7 +13,7 @@ EOF
 chmod +x ./.temp-oar-job.sh
 
 rm out err
-oarsub -l nodes=1,walltime=144:00:00 -p "GPU='YES'" -O out -E err ./.temp-oar-job.sh
+oarsub -l nodes=1,walltime=144:00:00 -p "GPU='YES'" -O out3 -E err3 ./.temp-oar-job.sh
 
 
 
