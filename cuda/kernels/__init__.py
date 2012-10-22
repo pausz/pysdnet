@@ -12,6 +12,7 @@ system to allow, e.g.
 import os
 import string
 
+import pycuda.driver
 from pycuda.compiler import SourceModule
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +32,18 @@ class srcmod(object):
         self._module = SourceModule(final_src)
 
         for f in fns:
-            setattr(self, f, self._module.get_function(f))
+            fn = self._module.get_function(f)
+            if _debug:
+                def fn_(*args, **kwds):
+                    try:
+                        fn(*args, **kwds)
+                        pycuda.driver.Context.synchronize()
+                    except Exception as exc:
+                        msg = 'PyCUDA launch of %r failed w/ %r'
+                        msg %= (fn, exc)
+                        raise Exception(msg)
+            else:
+                fn_ = fn
+            setattr(self, f, fn_)
 
 
