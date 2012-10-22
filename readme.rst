@@ -1,39 +1,38 @@
 pysdnet
 =======
 
-what
-----
-
-This is a library to integrate stochastic delayed differential equations
-that resemble more or less networks. A pure NumPy integrator is available,
-and a more efficient C version runs quite fine as well. A CUDA template is
-present, and I'm currently waiting to test and optimize it, but previous tests
-indicate the (Py)CUDA version will shine for systems whose simulation speed, on the
-CPU, is limited by memory bandwidth.
-
-Mathematically, I use fixed-step size Euler and additive noise. If the effort
-is justified, a few things could be added without much difficulty:
-
-- multiplicative noise
-- Heun or higher order methods
-
-If the system is small and deterministic, it's nice to have sophisticated
-algorithms checking for delay-induced discontinuity propagation, so use dde23
-or pydelay. Here, I ignore these problems.
-
-Hopefully once the densely coupled version is running nicely on PyCUDA, I can
-tackle a sparse version; some tests of sparse multiplication is in sparse branch,
-appears to do well on gpu.
-
-how
+bdi
 ---
 
-- Python 2.6+, NumPy
-- C compiler for C version
+Miscellaneous stuff for using this library on the cluster.
 
-Cuda version requires
+cuda
+----
 
-- PyCUDA
-- Nvidia graphics card
+Tools for working with PyCUDA and the GPUs.
+
+data
+----
+
+Organized connectivity data.
+
+doc
+---
+
+Documentation
+
+parsweep3d.py
+-------------
 
 
+-rw-r--r--  1 duke  duke  1152 Oct 22 14:54 readme.rst
+-rw-r--r--  1 duke  duke   490 Oct 22 14:54 reduce.py
+drwxr-xr-x  2 duke  duke   512 Oct 22 17:22 run1
+drwxr-xr-x  2 duke  duke   512 Oct 22 17:22 run2
+drwxr-xr-x  2 duke  duke   512 Oct 22 17:22 run3
+drwxr-xr-x  2 duke  duke   512 Oct 22 17:21 run4
+drwxr-xr-x  2 duke  duke   512 Oct 22 17:21 run5-s0
+-rw-r--r--  1 duke  duke  2572 Oct 22 14:54 se.py
+-rw-r--r--  1 duke  duke   153 Oct 22 14:54 showtell.py
+-rw-r--r--  1 duke  duke   134 Oct 22 14:54 sys-ipy-env
+-rw-r--r--  1 duke  duke   456 Oct 22 14:54 util.py

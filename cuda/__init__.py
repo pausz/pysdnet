@@ -22,7 +22,6 @@ except Exception as exc:
     print os.environ
     print
 
-
 def orinfo(n):
     orec = OccupancyRecord(DeviceData(), n)
     return """occupancy record information
@@ -31,6 +30,13 @@ def orinfo(n):
         limited by - %s
         occupancy - %f
     """ % (orec.tb_per_mp, orec.warps_per_mp, orec.limited_by, orec.occupancy)
+
+#                                       dispo=pycuda.autoinit.device.total_memory()
+def estnthr(dist, vel, dt, nsv, pf=0.7, dispo=1535*2**20                           ):
+    n = dist.shape[0]
+    idelmax = long(dist.max()/vel/dt)
+    return long( (dispo*pf - 4*n*n + 4*n*n)/(4*idelmax*n + 4*nsv*n + 4 + 4) )
+
 
 from kernels import srcmod
 

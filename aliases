@@ -1,4 +1,0 @@
-alias cm='git commit'
-alias ga='git add'
-alias ls='ls --color=auto'
-alias st='git status'
