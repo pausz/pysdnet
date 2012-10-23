@@ -73,12 +73,12 @@ class arrays_on_gpu(object):
    
 class srcmod(object):
     
-    def __init__(self, src, fns, _debug=False, **kwds):
+    def __init__(self, src, fns, debug=False):
 
         self.src = src
 
         if _debug:
-            print "srcmod: source is \n%s" % self.sr
+            print "srcmod: source is \n%s" % (self.src,)
 
         self._module = SourceModule(self.src)
 
