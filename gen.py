@@ -1,150 +1,96 @@
-import cgen as c
-import cgen.cuda as cc
+from cgen import *
+from cgen.cuda import *
 
-class RPointer(c.Pointer):
+
+class RPointer(Pointer):
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
         return sub_tp, ("* __restricted__ %s" % sub_decl)
 
-class Wrapper(object):
-    
-    def __init__(self, horizon):
-        self.horizon = horizon
+def wrap(self, horizon, gpu=False):
 
-    def generate(self, gpu=False):
+    h = self.horizon
 
-        h = self.horizon
+    fndecl = FunctionDeclaration(Value('int', 'wrap'), [Value('int', 'i')])
+    if gpu:
+        fndecl = CudaDevice(fndecl)
+    fndecl = DeclSpecifier(fndecl, 'inline')
 
-        fndecl = c.FunctionDeclaration(c.Value('int', 'wrap'), [c.Value('int', 'i')])
-        if gpu:
-            fndecl = cc.CudaDevice(fndecl)
-        fndecl = c.DeclSpecifier(fndecl, 'inline')
+    body = [If('i>=0', Block([Statement('return i %% %d' % h)]),
+                Block([If('i == - $horizon', 
+                            Block([Statement('return 0')]),
+                            Block([Statement('%d + (i %% %d)' % (h, h))]))]))]
 
-        body = [c.If('i>=0', c.Block([c.Statement('return i %% %d' % h)]),
-                    c.Block([c.If('i == - $horizon', 
-                                c.Block([c.Statement('return 0')]),
-                                c.Block([c.Statement('%d + (i %% %d)' % (h, h))]))]))]
+    return FunctionBody(fndecl, Block(body))
 
-        for line in c.FunctionBody(fndecl, c.Block(body)).generate():
-            yield line
-    
-class Step(object):
+def step(n, nsv, gpu=False, nunroll=1):
 
-    def __init__(self, n, nsv):
-        self.n = n
-        self.nsv = nsv
+    dtype = 'float' if gpu else 'double'
 
-    def generate(self, gpu=False):
-        dtype = 'float' if gpu else 'double'
+    fndecl = FunctionDeclaration(Value('void', 'step'),
+               [Value('int', 'step'), RPointer(Value('int', 'idel'))]\
+             + [RPointer(Value('float', arg)) for arg in ['hist', 'conn', 'X', 'gsc', 'exc']])
 
-        fnargs = [c.Value('int', 'step'),
-                  RPointer(c.Value('int', 'idel'))]\
-               + [RPointer(c.Value('float', arg))
-                  for arg in ['hist', 'conn', 'X', 'gsc', 'exc']]
+    if gpu:
+        fndecl = CudaGlobal(fndecl)
 
-        fndecl = c.FunctionDeclaration(c.Value('void', 'step'), fnargs)
+    body = []
 
-        if gpu:
-            fndecl = cc.CudaGlobal(fndecl)
+    if gpu:
+        body += [Initializer(Value('int', 'parij'), "blockDim.x*blockIdx.x + threadIdx.x"),
+                 Initializer(Value('int', 'nthr'),  "blockDim.x*gridDim.x")]
 
-        body = []
+    body += [Value('int', 'hist_idx'), Value(dtype, 'input'),
+             Value('int', 'i'), Value('int', 'j')]
 
-        if gpu:
-            body += [c.Initializer(c.Value('int', 'parij'),
-                                   "blockDim.x*blockIdx.x + threadIdx.x"),
-                     c.Initializer(c.Value('int', 'nthr'),
-                                   "blockDim.x*gridDim.x")]
+    hist_idx = '%d*nthr*%s + nthr*j + parij' if gpu else '%d*%s + j'
 
-        body += [c.Value('int', 'hist_idx'), c.Value(dtype, 'input'),
-                 c.Value('int', 'i'), c.Value('int', 'j')]
+    inner_loop_body = [Assign('hist_idx', hist_idx % (n, 'wrap(step - 1 - *idel)')),
+                       Statement('input += (*conn)*hist[hist_idx]')]\
+                    + [Statement(v+'++') for v in ['j', 'idel', 'conn']]
 
-        hist_idx = '%d*nthr*%s + nthr*j + parij' if gpu else '%d*%s + j'
+    model_args = ['X + %s*i' % (('nthr*%d' if gpu else '%d')%nsv, ),
+                  'exc' + (' + parij' if gpu else ''),
+                  'gsc%s*input/%d' % ('[parij]' if gpu else '', n)]\
+               + (['nthr', 'parij'] if gpu else [])
 
-        # unroll inner loop 
-        body.append(c.For('i=0', 'i<%d' % self.n, 'i++', c.Block([ 
-            c.Assign('input', '0.0'),
-            c.For('j=0', 'j<%d' % self.n, 'j++, idel++, conn++', c.Block([
-                c.Assign('hist_idx', hist_idx % (self.n, 'wrap(step - 1 - *idel)')),
-                c.Statement('input += (*conn)*hist[hist_idx]')
-            ]))
-        ])))
+    body.append(For('i=0', 'i<%d' % n, 'i++', Block([ 
+        Assign('input', '0.0'),
+        For('j=0', 'j<%d' % (n - n%nunroll,), '', Block(inner_loop_body*nunroll))
+    ] + inner_loop_body*(n%nunroll) + [Statement('model(%s)' % (', '.join(model_args), ))]
+    )))
 
-        model_args = ['X + %s*i' % (('nthr*%d' if gpu else '%d')%self.nsv, ),
-                      'exc' + (' + parij' if gpu else ''),
-                      'gsc%s*input/%d' % ('[parij]' if gpu else '', self.n)]
-
-        if gpu:
-            model_args += ['nthr', 'parij']
-
-        body.append(c.Statement('model(%s)' % (', '.join(model_args), )))
-
-        for line in c.FunctionBody(fndecl, c.Block(body)).generate():
-            yield line
+    return FunctionBody(fndecl, Block(body))
 
 
-class Model(object):
+def model(eqns, pars, dt=0.1, gpu=False):
 
-    def __init__(self, eqns, pars):
-        self.eqns = eqns
-        self.pars = pars
+    dtype = 'float' if gpu else 'double'
 
-    def generate(self, dt=0.1, gpu=False):
-        dtype = 'float' if gpu else 'double'
+    args = [RPointer(Value(dtype, 'X')), RPointer(Value('void', 'pars')), Value(dtype, 'input')]\
+         + ([Value('int', 'nthr'),Value('int', 'parij')] if gpu else [])
 
-        # arg names: X, pars, n_thr, par_ij, input
+    fndecl = FunctionDeclaration(Value('void', 'fn'), args)
+    if gpu:
+        fndecl = CudaDevice(fndecl)
+    fndecl = DeclSpecifier(fndecl, 'inline')
 
-        X = c.Value(dtype, 'X')
-        input = c.Value(dtype, 'input')
+    Xrefs = [("X[ntr*%d + parij]" if gpu else "X[%d]") % i for i in range(len(eqns))]
 
-        args = []
-        args.append(RPointer(X))
-        args.append(RPointer(c.Value('void', 'pars')))
-        args.append(input)
+    body = [Initializer(Value(dtype, p), "((%s*) pars)[%d]" % (dtype, i)) for i, p in enumerate(pars)]\
+         + [Initializer(Value(dtype, eqn[0]), Xref) for Xref, eqn in zip(Xrefs, eqns)]\
+         + [Initializer(Value(dtype, 'd'+var), deriv) for var, deriv in eqns]\
+         + [Assign(Xref, '%s + %f*d%s' % (eqn[0], dt, var)) for Xref, eqn in zip(Xrefs, eqns)]
 
-        if gpu:
-            nthr = c.Value('int', 'nthr')
-            parij = c.Value('int', 'parij')
-            args.append(nthr)
-            args.append(parij)
+    return FunctionBody(fndecl, Block(body))
 
-        Xrefs = [("X[ntr*%d + parij]" if gpu else "X[%d]") % i 
-                    for i in range(len(self.eqns))]
-
-        body = []
-
-        for i, p in enumerate(self.pars):
-            pval = c.Value(dtype, p)
-            body.append(c.Initializer(c.Value(dtype, p), 
-                                       "((%s*) pars)[%d]" % (dtype, i)))
-
-        for i, var in enumerate(self.eqns):
-            var, _ = var
-            body.append(c.Initializer(c.Value(dtype, var), Xrefs[i]))
-
-        for var, deriv in self.eqns:
-            body.append(c.Initializer(c.Value(dtype, 'd'+var), deriv))
-            
-        for i, var in enumerate(self.eqns):
-            var = var[0]
-            body.append(c.Assign(Xrefs[i], '%s + %f*d%s' % (var, dt, var)))
-                    
-
-        fndecl = c.FunctionDeclaration(c.Value('void', 'fn'), args)
-        if gpu:
-            fndecl = cc.CudaDevice(fndecl)
-        fndecl = c.DeclSpecifier(fndecl, 'inline')
-
-        for line in c.FunctionBody(fndecl, c.Block(body)).generate():
-            yield line
-
-
-fhn = Model(
+fhn = dict(
     eqns=[('x', '(x - x*x*x/3.0 + y)*3.0/5.0'),
           ('y', '(a - x)/3.0/5.0 + input')],
     pars = ['a']
 )
 
-pitch = Model(
+pitch = dict(
     eqns=[('x', '(x - x*x*x/3.0)/5.0 + lambda')],
     pars=['lambda']
 )
