@@ -1,6 +1,8 @@
-# common helpers to boot up pycuda
+# pycuda interop patterns
 
 import time
+import os
+import string
 
 try:
     import pyublas
@@ -18,7 +20,6 @@ try:
 except Exception as exc:
     print "importing pycuda modules failed with exception", exc
     print "please check PATH and LD_LIBRARY_PATH variables"
-    import os
     print os.environ
     print
 
@@ -37,8 +38,6 @@ def estnthr(dist, vel, dt, nsv, pf=0.7, dispo=1535*2**20                        
     idelmax = long(dist.max()/vel/dt)
     return long( (dispo*pf - 4*n*n + 4*n*n)/(4*idelmax*n + 4*nsv*n + 4 + 4) )
 
-
-from kernels import srcmod
 
 class arrays_on_gpu(object):
 
@@ -72,3 +71,30 @@ class arrays_on_gpu(object):
             delattr(self, key)
 
    
+class srcmod(object):
+    
+    def __init__(self, src, fns, _debug=False, **kwds):
+
+        self.src = src
+
+        if _debug:
+            print "srcmod: source is \n%s" % self.sr
+
+        self._module = SourceModule(self.src)
+
+        for f in fns:
+            fn = self._module.get_function(f)
+            if _debug:
+                def fn_(*args, **kwds):
+                    try:
+                        fn(*args, **kwds)
+                        pycuda.driver.Context.synchronize()
+                    except Exception as exc:
+                        msg = 'PyCUDA launch of %r failed w/ %r'
+                        msg %= (fn, exc)
+                        raise Exception(msg)
+            else:
+                fn_ = fn
+            setattr(self, f, fn_)
+
+
