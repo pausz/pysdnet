@@ -5,7 +5,82 @@ class RPointer(c.Pointer):
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
         return sub_tp, ("* __restricted__ %s" % sub_decl)
+
+class Wrapper(object):
     
+    def __init__(self, horizon):
+        self.horizon = horizon
+
+    def generate(self, gpu=False):
+
+        h = self.horizon
+
+        fndecl = c.FunctionDeclaration(c.Value('int', 'wrap'), [c.Value('int', 'i')])
+        if gpu:
+            fndecl = cc.CudaDevice(fndecl)
+        fndecl = c.DeclSpecifier(fndecl, 'inline')
+
+        body = [c.If('i>=0', c.Block([c.Statement('return i %% %d' % h)]),
+                    c.Block([c.If('i == - $horizon', 
+                                c.Block([c.Statement('return 0')]),
+                                c.Block([c.Statement('%d + (i %% %d)' % (h, h))]))]))]
+
+        for line in c.FunctionBody(fndecl, c.Block(body)).generate():
+            yield line
+    
+class Step(object):
+
+    def __init__(self, n, nsv):
+        self.n = n
+        self.nsv = nsv
+
+    def generate(self, gpu=False):
+        dtype = 'float' if gpu else 'double'
+
+        fnargs = [c.Value('int', 'step'),
+                  RPointer(c.Value('int', 'idel'))]\
+               + [RPointer(c.Value('float', arg))
+                  for arg in ['hist', 'conn', 'X', 'gsc', 'exc']]
+
+        fndecl = c.FunctionDeclaration(c.Value('void', 'step'), fnargs)
+
+        if gpu:
+            fndecl = cc.CudaGlobal(fndecl)
+
+        body = []
+
+        if gpu:
+            body += [c.Initializer(c.Value('int', 'parij'),
+                                   "blockDim.x*blockIdx.x + threadIdx.x"),
+                     c.Initializer(c.Value('int', 'nthr'),
+                                   "blockDim.x*gridDim.x")]
+
+        body += [c.Value('int', 'hist_idx'), c.Value(dtype, 'input'),
+                 c.Value('int', 'i'), c.Value('int', 'j')]
+
+        hist_idx = '%d*nthr*%s + nthr*j + parij' if gpu else '%d*%s + j'
+
+        # unroll inner loop 
+        body.append(c.For('i=0', 'i<%d' % self.n, 'i++', c.Block([ 
+            c.Assign('input', '0.0'),
+            c.For('j=0', 'j<%d' % self.n, 'j++, idel++, conn++', c.Block([
+                c.Assign('hist_idx', hist_idx % (self.n, 'wrap(step - 1 - *idel)')),
+                c.Statement('input += (*conn)*hist[hist_idx]')
+            ]))
+        ])))
+
+        model_args = ['X + %s*i' % (('nthr*%d' if gpu else '%d')%self.nsv, ),
+                      'exc' + (' + parij' if gpu else ''),
+                      'gsc%s*input/%d' % ('[parij]' if gpu else '', self.n)]
+
+        if gpu:
+            model_args += ['nthr', 'parij']
+
+        body.append(c.Statement('model(%s)' % (', '.join(model_args), )))
+
+        for line in c.FunctionBody(fndecl, c.Block(body)).generate():
+            yield line
+
 
 class Model(object):
 
@@ -68,4 +143,10 @@ fhn = Model(
           ('y', '(a - x)/3.0/5.0 + input')],
     pars = ['a']
 )
+
+pitch = Model(
+    eqns=[('x', '(x - x*x*x/3.0)/5.0 + lambda')],
+    pars=['lambda']
+)
+
 
