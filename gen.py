@@ -38,7 +38,7 @@ class RPointer(Pointer):
         restrict = " restrict " if self.c99 else " __restricted__ "
         return sub_tp, "*%s%s" % (restrict, sub_decl)
 
-def wrap(horizon, gpu=False, inline=True):
+def wrap(horizon, gpu=False):
     """
     Emits a function that behaves like Python's modulo operator.
     """
@@ -48,8 +48,6 @@ def wrap(horizon, gpu=False, inline=True):
     fndecl = FunctionDeclaration(Value('int', 'wrap'), [Value('int', 'i')])
     if gpu:
         fndecl = CudaDevice(fndecl)
-    if inline:
-        fndecl = DeclSpecifier(fndecl, 'inline')
 
     body = [If('i>=0', Block([Statement('return i %% %d' % h)]),
                 Block([If('i == - %d' % h, 
@@ -58,7 +56,7 @@ def wrap(horizon, gpu=False, inline=True):
 
     return FunctionBody(fndecl, Block(body))
 
-def model(eqns, pars, name='model', dt=0.1, gpu=False, inline=True):
+def model(eqns, pars, name='model', dt=0.1, gpu=False):
 
     dtype = 'float' if gpu else 'double'
 
@@ -68,15 +66,13 @@ def model(eqns, pars, name='model', dt=0.1, gpu=False, inline=True):
     fndecl = FunctionDeclaration(Value('void', name), args)
     if gpu:
         fndecl = CudaDevice(fndecl)
-    if inline:
-        fndecl = DeclSpecifier(fndecl, 'inline')
 
     Xrefs = [("X[ntr*%d + parij]" if gpu else "X[%d]") % i for i in range(len(eqns))]
 
     body = [Initializer(Value(dtype, p), "((%s*) pars)[%d]" % (dtype, i)) for i, p in enumerate(pars)]\
          + [Initializer(Value(dtype, eqn[0]), Xref) for Xref, eqn in zip(Xrefs, eqns)]\
          + [Initializer(Value(dtype, 'd'+var), deriv) for var, deriv in eqns]\
-         + [Assign(Xref, '%s + %f*d%s' % (eqn[0], dt, var)) for Xref, eqn in zip(Xrefs, eqns)]
+         + [Assign(Xref, '%s + %f*d%s' % (eqn[0], dt, eqn[0])) for Xref, eqn in zip(Xrefs, eqns)]
 
     return FunctionBody(fndecl, Block(body))
 
@@ -135,7 +131,7 @@ def step(n, nsv, cvar=0, gpu=False, nunroll=1, model='model'):
 
 
 def module(model, step, wrap, gpu=False):
-    return Module([wrap, model, step])
+    return Module([wrap, model, step, Line('\n')])
 
 # put this into descr.py or somewhere else
 fhn = dict(

@@ -4,28 +4,39 @@ import ctypes
 
 def dll(src, libname,
         args=['gcc', '-std=c99', '-fPIC', '-shared'],
-        debug=False, load):
+        debug=False):
 
-    with tempfile.NamedTemporaryFile(suffix='.c') as fd:
+    if debug:
+        file = open('temp.c', 'w')
+    else:
+        file = tempfile.NamedTemporaryFile(suffix='.c')
+
+    with file as fd:
         fd.write(src)
         fd.flush()
         if debug:
             print src
+            args.append('-g')
+        else:
+            args.append('-O3')
         ret = subprocess.call(args + [fd.name, '-o', libname])
 
     return ret
 
 class srcmod(object):
 
-    def __init__self, src, fns, debug=False):
+    def __init__(self, src, fns, debug=False):
 
-        self.src = src
+        if src.__class__.__module__ == 'cgen':
+            self.src = '\n'.join(src.generate())
+        else:
+            self.src = src
 
         if debug:
-            print "srcmod: source is \n%s" (self.src,)
+            print "srcmod: source is \n%s" % (self.src,)
 
         with tempfile.NamedTemporaryFile(suffix='.so') as fd:
-            dll(self.src, fd.name)
+            dll(self.src, fd.name, debug=debug)
             self._module = ctypes.CDLL(fd.name)
 
         for f in fns:
