@@ -49,6 +49,12 @@ def step(n, nsv, cvar=0, gpu=False, nunroll=1):
                        Statement('input += (*conn)*hist[hist_idx]')]\
                     + [Statement(v+'++') for v in ['j', 'idel', 'conn']]
 
+    update_loop = [
+        Assign('hist[' + ('nthr*%d*wrap(step) + nthr*i + parij'%n if gpu else '%d*wrap(step) + i'%n) + ']', 
+               'X[' + ('%d*nthr*i + nthr*%d + parij' if gpu else '%d*i + %d')%(nsv, cvar) + ']'),
+        Statement('i++')
+    ]
+
     model_args = ['X + %s*i' % (('nthr*%d' if gpu else '%d')%nsv, ),
                   'exc' + (' + parij' if gpu else ''),
                   'gsc%s*input/%d' % ('[parij]' if gpu else '', n)]\
@@ -61,10 +67,8 @@ def step(n, nsv, cvar=0, gpu=False, nunroll=1):
     )),
 
     # I thought this needed to be in a separate CUDA kernel to synch correctly, but I'm an idiot
-    For('i=0', 'i<%d' % n, 'i++', Block([
-        Assign('hist[' + ('nthr*%d*wrap(step) + nthr*i + parij'%n if gpu else '%d*wrap(step) + i'%n) + ']', 
-               'X[' + ('%d*nthr*i + nthr*%d + parij' if gpu else '%d*i + %d')%(nsv, cvar) + ']')
-    ]))
+    For('i=0', 'i<%d' % (n - n%nunroll), '', Block(update_loop*nunroll))
+    ] + update_loop * (n%nunroll)
 
     return FunctionBody(fndecl, Block(body))
 
