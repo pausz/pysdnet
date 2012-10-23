@@ -23,7 +23,7 @@ def wrap(self, horizon, gpu=False):
 
     return FunctionBody(fndecl, Block(body))
 
-def step(n, nsv, gpu=False, nunroll=1):
+def step(n, nsv, cvar=0, gpu=False, nunroll=1):
 
     dtype = 'float' if gpu else 'double'
 
@@ -54,11 +54,17 @@ def step(n, nsv, gpu=False, nunroll=1):
                   'gsc%s*input/%d' % ('[parij]' if gpu else '', n)]\
                + (['nthr', 'parij'] if gpu else [])
 
-    body.append(For('i=0', 'i<%d' % n, 'i++', Block([ 
+    body += [For('i=0', 'i<%d' % n, 'i++', Block([ 
         Assign('input', '0.0'),
         For('j=0', 'j<%d' % (n - n%nunroll,), '', Block(inner_loop_body*nunroll))
     ] + inner_loop_body*(n%nunroll) + [Statement('model(%s)' % (', '.join(model_args), ))]
-    )))
+    )),
+
+    # I thought this needed to be in a separate CUDA kernel to synch correctly, but I'm an idiot
+    For('i=0', 'i<%d' % n, 'i++', Block([
+        Assign('hist[' + ('nthr*%d*wrap(step) + nthr*i + parij'%n if gpu else '%d*wrap(step) + i'%n) + ']', 
+               'X[' + ('%d*nthr*i + nthr*%d + parij' if gpu else '%d*i + %d')%(nsv, cvar) + ']')
+    ]))
 
     return FunctionBody(fndecl, Block(body))
 
